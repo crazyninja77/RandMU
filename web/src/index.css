@@ -1,0 +1,361 @@
+:root {
+  --bg: #0d0b1a;
+  --bg-soft: #171430;
+  --card: #1d1940;
+  --accent: #7c5cff;
+  --accent-2: #ff5ca8;
+  --text: #f4f2ff;
+  --muted: #a39fc4;
+  --ring: rgba(124, 92, 255, 0.4);
+  --ideal: #cc0066;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial,
+    sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: radial-gradient(1200px 600px at 80% -10%, #2a1f5c 0%, transparent 60%),
+    radial-gradient(900px 500px at -10% 10%, #3a1140 0%, transparent 55%), var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+}
+
+.page {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 0 20px;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.site-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 22px 0;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.brand {
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+}
+.brand-accent {
+  color: var(--accent);
+}
+
+.stats-bar {
+  display: flex;
+  gap: 14px;
+  color: var(--muted);
+  font-size: 13px;
+  flex-wrap: wrap;
+}
+
+.main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 24px 0;
+}
+
+.hero {
+  text-align: center;
+  padding: 28px 0;
+}
+.hero h1 {
+  font-size: 42px;
+  line-height: 1.1;
+  margin: 0 0 16px;
+  letter-spacing: -1px;
+}
+.hero h1 em {
+  font-style: italic;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.lede {
+  color: var(--muted);
+  font-size: 17px;
+  line-height: 1.6;
+  max-width: 540px;
+  margin: 0 auto 28px;
+}
+
+.btn {
+  cursor: pointer;
+  border: none;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 600;
+  padding: 12px 18px;
+  transition: transform 0.08s ease, box-shadow 0.2s ease, background 0.2s ease;
+  color: var(--text);
+}
+.btn:active {
+  transform: translateY(1px);
+}
+.btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.btn-primary {
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  box-shadow: 0 8px 24px var(--ring);
+}
+.btn-primary:hover:not(:disabled) {
+  box-shadow: 0 10px 30px var(--ring);
+}
+.btn.big {
+  font-size: 18px;
+  padding: 16px 30px;
+  border-radius: 14px;
+}
+.btn-secondary {
+  background: var(--bg-soft);
+  border: 1px solid #2e2a55;
+}
+.btn-ghost {
+  background: transparent;
+  color: var(--muted);
+}
+
+.paywith {
+  margin-top: 14px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.error,
+.ideal-error {
+  color: #ff8a8a;
+  font-size: 14px;
+  margin-top: 14px;
+}
+
+/* Card */
+.card {
+  background: var(--card);
+  border: 1px solid #2e2a55;
+  border-radius: 18px;
+  padding: 22px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+}
+.song-card {
+  animation: rise 0.4s ease;
+}
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.song-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+.song-title {
+  margin: 0;
+  font-size: 28px;
+  letter-spacing: -0.5px;
+}
+.song-artist {
+  margin: 4px 0 0;
+  color: var(--accent);
+  font-weight: 600;
+}
+.spotify-link,
+.spotify-fallback {
+  color: var(--text);
+  background: #1db954;
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 12px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.spotify-fallback {
+  display: inline-block;
+  margin: 8px 0 4px;
+}
+
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 16px 0;
+}
+.tag {
+  font-size: 12px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: var(--bg-soft);
+  border: 1px solid #2e2a55;
+  color: var(--muted);
+}
+.tag-country {
+  background: rgba(124, 92, 255, 0.18);
+  color: #cdbcff;
+  border-color: transparent;
+}
+.tag-genre {
+  background: rgba(255, 92, 168, 0.18);
+  color: #ffc0dd;
+  border-color: transparent;
+}
+
+.spotify-embed {
+  border-radius: 12px;
+  margin: 6px 0 8px;
+  display: block;
+}
+
+.desc-block {
+  margin-top: 18px;
+}
+.desc-block h3 {
+  margin: 0 0 6px;
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+.desc-block p {
+  margin: 0;
+  line-height: 1.6;
+}
+.album-name {
+  font-weight: 600;
+}
+.again-btn {
+  margin-top: 24px;
+  width: 100%;
+}
+
+/* iDEAL modal */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(6, 4, 18, 0.7);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 10;
+}
+.modal {
+  width: 100%;
+  max-width: 380px;
+  background: #ffffff;
+  color: #1a1a1a;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.5);
+}
+.ideal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  background: #f6f6f8;
+  border-bottom: 1px solid #ececf0;
+}
+.ideal-logo {
+  font-weight: 800;
+  font-style: italic;
+  color: var(--ideal);
+  font-size: 20px;
+}
+.ideal-merchant {
+  font-weight: 700;
+  color: #444;
+}
+.ideal-body {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+}
+.ideal-amount-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 18px;
+}
+.ideal-amount-row strong {
+  font-size: 22px;
+}
+.ideal-note {
+  color: #888;
+  font-size: 12px;
+  margin: 6px 0 18px;
+}
+.ideal-label {
+  font-size: 13px;
+  color: #555;
+  margin-bottom: 6px;
+}
+.ideal-select {
+  padding: 11px 12px;
+  border-radius: 10px;
+  border: 1px solid #d6d6de;
+  font-size: 15px;
+  margin-bottom: 18px;
+  background: #fff;
+}
+.ideal-pay {
+  width: 100%;
+  background: var(--ideal);
+  box-shadow: none;
+  margin-bottom: 8px;
+}
+.ideal-modal .btn-ghost {
+  color: #888;
+}
+
+/* spinner */
+.spinner {
+  width: 42px;
+  height: 42px;
+  border: 4px solid #2e2a55;
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  margin: 0 auto 18px;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.site-footer {
+  text-align: center;
+  color: var(--muted);
+  font-size: 12px;
+  padding: 24px 0;
+}
+
+@media (max-width: 560px) {
+  .hero h1 {
+    font-size: 32px;
+  }
+}

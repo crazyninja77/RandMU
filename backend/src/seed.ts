@@ -1,0 +1,42 @@
+import { randomUUID } from "node:crypto";
+import { db } from "./db.js";
+import { SEED_SONGS } from "./seedData.js";
+
+function spotifySearchUrl(artist: string, title: string): string {
+  const q = encodeURIComponent(`${artist} ${title}`);
+  return `https://open.spotify.com/search/${q}`;
+}
+
+const insert = db.prepare(`
+  INSERT INTO songs (
+    id, title, artist, artist_description, song_description,
+    country, language, genre, subgenre,
+    album_name, album_type, album_description, year,
+    spotify_track_id, spotify_url
+  ) VALUES (
+    @id, @title, @artist, @artistDescription, @songDescription,
+    @country, @language, @genre, @subgenre,
+    @albumName, @albumType, @albumDescription, @year,
+    @spotifyTrackId, @spotifyUrl
+  )
+`);
+
+const insertMany = db.transaction((rows: typeof SEED_SONGS) => {
+  for (const s of rows) {
+    insert.run({
+      id: randomUUID(),
+      ...s,
+      spotifyTrackId: null,
+      // until a real track id is resolved, link to a Spotify search
+      spotifyUrl: spotifySearchUrl(s.artist, s.title),
+    });
+  }
+});
+
+const existing = (db.prepare("SELECT COUNT(*) AS c FROM songs").get() as { c: number }).c;
+if (existing > 0 && !process.argv.includes("--force")) {
+  console.log(`Library already has ${existing} songs. Use --force to add the seed set again.`);
+} else {
+  insertMany(SEED_SONGS);
+  console.log(`Seeded ${SEED_SONGS.length} songs. Library now has ${existing + SEED_SONGS.length}.`);
+}
