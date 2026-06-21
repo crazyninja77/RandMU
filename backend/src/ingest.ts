@@ -107,13 +107,15 @@ async function searchTracks(query: string, market: string, limit = 50, offset = 
 }
 
 const artistCache = new Map<string, SpotifyArtist>();
+// The batch /artists endpoint is forbidden for some apps, so fetch singly.
 async function getArtists(ids: string[]): Promise<Map<string, SpotifyArtist>> {
   const missing = ids.filter((id) => !artistCache.has(id));
-  for (let i = 0; i < missing.length; i += 50) {
-    const batch = missing.slice(i, i + 50);
-    const json = await spotify(`/artists?ids=${batch.join(",")}`);
-    for (const a of json.artists as SpotifyArtist[]) {
-      if (a) artistCache.set(a.id, a);
+  for (const id of missing) {
+    try {
+      const a = (await spotify(`/artists/${id}`)) as SpotifyArtist;
+      if (a && a.id) artistCache.set(a.id, a);
+    } catch {
+      // skip artists we can't fetch; genre/image just stay empty
     }
   }
   return artistCache;
