@@ -6,7 +6,13 @@ import type { Song } from "./types.js";
 // pipeline (src/ingest.ts); until then the app links out to a Spotify search.
 type SeedSong = Omit<
   Song,
-  "id" | "spotifyTrackId" | "spotifyUrl" | "artistImageUrl" | "albumImageUrl"
+  | "id"
+  | "spotifyTrackId"
+  | "spotifyUrl"
+  | "artistImageUrl"
+  | "albumImageUrl"
+  | "ratingAverage"
+  | "ratingCount"
 >;
 
 export const SEED_SONGS: SeedSong[] = [

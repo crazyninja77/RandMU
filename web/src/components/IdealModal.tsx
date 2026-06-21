@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { api } from "../api";
 import type { Payment, Song } from "../types";
+import { useI18n } from "../i18n";
 
 const BANKS = [
   "ABN AMRO",
@@ -26,6 +27,7 @@ export function IdealModal({
   onPaid: (song: Song | null) => void;
   onCancel: () => void;
 }) {
+  const { t } = useI18n();
   const [bank, setBank] = useState(BANKS[0]);
   const [phase, setPhase] = useState<Phase>("select");
   const [error, setError] = useState<string | null>(null);
@@ -65,13 +67,13 @@ export function IdealModal({
 
         <div className="ideal-body">
           <div className="ideal-amount-row">
-            <span>Amount</span>
+            <span>{t("ideal.amount")}</span>
             <strong>{amount}</strong>
           </div>
-          <p className="ideal-note">Mock payment — no real money is charged.</p>
+          <p className="ideal-note">{t("ideal.note")}</p>
 
           <label className="ideal-label" htmlFor="bank">
-            Choose your bank
+            {t("ideal.chooseBank")}
           </label>
           <select
             id="bank"
@@ -87,13 +89,15 @@ export function IdealModal({
             ))}
           </select>
 
-          {error && <p className="ideal-error">Payment failed: {error}</p>}
+          {error && <p className="ideal-error">{t("ideal.failed")}: {error}</p>}
 
           <button className="btn btn-primary ideal-pay" onClick={pay} disabled={phase === "processing"}>
-            {phase === "processing" ? `Confirming at ${bank}…` : `Pay ${amount} with ${bank}`}
+            {phase === "processing"
+              ? t("ideal.confirming", { bank })
+              : t("ideal.pay", { amount, bank })}
           </button>
           <button className="btn btn-ghost" onClick={cancel} disabled={phase === "processing"}>
-            Cancel
+            {t("ideal.cancel")}
           </button>
         </div>
       </div>

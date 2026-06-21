@@ -1,6 +1,6 @@
 import express from "express";
 import cors from "cors";
-import { getStats } from "./library.js";
+import { getStats, rateSong, getSongById } from "./library.js";
 import {
   PRICE_CENTS,
   createPayment,
@@ -48,6 +48,19 @@ app.post("/api/payments/:id/fail", (req, res) => {
   const payment = failPayment(req.params.id);
   if (!payment) return res.status(404).json({ error: "payment_not_found" });
   res.json({ payment });
+});
+
+// Rate a song (0–10). Returns the new community average + count.
+app.post("/api/songs/:id/rate", (req, res) => {
+  const value = Number(req.body?.value);
+  if (!Number.isFinite(value) || value < 0 || value > 10) {
+    return res.status(400).json({ error: "invalid_value" });
+  }
+  if (!getSongById(req.params.id)) {
+    return res.status(404).json({ error: "song_not_found" });
+  }
+  const result = rateSong(req.params.id, value);
+  res.json(result);
 });
 
 app.get("/api/recommendation/:paymentId", (req, res) => {

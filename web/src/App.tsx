@@ -3,6 +3,7 @@ import { api } from "./api";
 import type { Payment, Song, Stats } from "./types";
 import { IdealModal } from "./components/IdealModal";
 import { SongCard } from "./components/SongCard";
+import { useI18n, type Lang } from "./i18n";
 
 type View =
   | { kind: "idle" }
@@ -10,7 +11,27 @@ type View =
   | { kind: "revealing" }
   | { kind: "result"; song: Song };
 
+function LangToggle() {
+  const { lang, setLang } = useI18n();
+  const langs: Lang[] = ["en", "nl"];
+  return (
+    <div className="lang-toggle" role="group" aria-label="Language">
+      {langs.map((l) => (
+        <button
+          key={l}
+          className={`lang-btn${lang === l ? " active" : ""}`}
+          onClick={() => setLang(l)}
+          aria-pressed={lang === l}
+        >
+          {l.toUpperCase()}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export default function App() {
+  const { t } = useI18n();
   const [stats, setStats] = useState<Stats | null>(null);
   const [view, setView] = useState<View>({ kind: "idle" });
   const [error, setError] = useState<string | null>(null);
@@ -33,7 +54,7 @@ export default function App() {
 
   function onPaid(song: Song | null) {
     if (!song) {
-      setError("Payment succeeded but no song could be drawn. Is the library seeded?");
+      setError(t("error.nosong"));
       setView({ kind: "idle" });
       return;
     }
@@ -44,16 +65,19 @@ export default function App() {
   return (
     <div className="page">
       <header className="site-header">
-        <div className="brand">
-          Rand<span className="brand-accent">MU</span>
+        <div className="header-left">
+          <LangToggle />
+          <div className="brand">
+            Rand<span className="brand-accent">MU</span>
+          </div>
         </div>
         <nav className="stats-bar">
           {stats && (
             <>
-              <span>{stats.total.toLocaleString()} songs</span>
-              <span>{stats.countries} countries</span>
-              <span>{stats.genres} genres</span>
-              <span>{stats.languages} languages</span>
+              <span>{stats.total.toLocaleString()} {t("stats.songs")}</span>
+              <span>{stats.countries} {t("stats.countries")}</span>
+              <span>{stats.genres} {t("stats.genres")}</span>
+              <span>{stats.languages} {t("stats.languages")}</span>
             </>
           )}
         </nav>
@@ -63,17 +87,15 @@ export default function App() {
         {view.kind === "idle" && (
           <section className="hero">
             <h1>
-              One random song from <em>everywhere</em>.
+              {t("hero.title.pre")}
+              <em>{t("hero.title.em")}</em>
+              {t("hero.title.post")}
             </h1>
-            <p className="lede">
-              A highly specialised library of music from around the world — far from the
-              Western mainstream. Pay {price} and we surprise you with one song: its country,
-              language, genre, the artist's story, and a snippet to play.
-            </p>
+            <p className="lede">{t("hero.lede", { price })}</p>
             <button className="btn btn-primary big" onClick={startPurchase}>
-              Surprise me · {price}
+              {t("hero.cta", { price })}
             </button>
-            <p className="paywith">Pay with iDEAL</p>
+            <p className="paywith">{t("hero.paywith")}</p>
             {error && <p className="error">{error}</p>}
           </section>
         )}
@@ -89,7 +111,7 @@ export default function App() {
         {view.kind === "revealing" && (
           <section className="hero">
             <div className="spinner" />
-            <p className="lede">Drawing your song…</p>
+            <p className="lede">{t("reveal.drawing")}</p>
           </section>
         )}
 
@@ -99,7 +121,7 @@ export default function App() {
       </main>
 
       <footer className="site-footer">
-        <span>RandMU — a song for {price}. Payments are mocked for now.</span>
+        <span>{t("footer.text", { price })}</span>
       </footer>
     </div>
   );

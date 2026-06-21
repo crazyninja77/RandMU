@@ -1,5 +1,7 @@
 import type { Song } from "../types";
 import { SpotifyPlayer } from "./SpotifyPlayer";
+import { RatingSlider } from "./RatingSlider";
+import { useI18n } from "../i18n";
 
 function Paragraphs({ text }: { text: string }) {
   const parts = text.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
@@ -42,6 +44,7 @@ function Thumb({
 }
 
 export function SongCard({ song, onAgain }: { song: Song; onAgain: () => void }) {
+  const { t } = useI18n();
   const album = albumLabel(song);
   return (
     <div className="card song-card">
@@ -53,7 +56,7 @@ export function SongCard({ song, onAgain }: { song: Song; onAgain: () => void })
         </div>
         {song.spotifyUrl && (
           <a className="spotify-link" href={song.spotifyUrl} target="_blank" rel="noreferrer">
-            Open in Spotify ↗
+            {t("card.openSpotify")}
           </a>
         )}
       </div>
@@ -68,19 +71,25 @@ export function SongCard({ song, onAgain }: { song: Song; onAgain: () => void })
 
       <SpotifyPlayer song={song} />
 
+      <RatingSlider
+        songId={song.id}
+        initialAverage={song.ratingAverage}
+        initialCount={song.ratingCount}
+      />
+
       <div className="desc-block">
-        <h3>About the song</h3>
+        <h3>{t("card.aboutSong")}</h3>
         <Paragraphs text={song.songDescription || "—"} />
       </div>
 
       <div className="desc-block">
-        <h3>About {song.artist}</h3>
+        <h3>{t("card.aboutArtist", { artist: song.artist })}</h3>
         <Paragraphs text={song.artistDescription || "—"} />
       </div>
 
       {album && (
         <div className="desc-block">
-          <h3>{song.albumType === "ep" ? "EP" : "Album"}</h3>
+          <h3>{song.albumType === "ep" ? t("card.ep") : t("card.album")}</h3>
           <div className="album-row">
             <Thumb url={song.albumImageUrl} label={song.albumName ?? "?"} shape="square" />
             <div>
@@ -92,7 +101,7 @@ export function SongCard({ song, onAgain }: { song: Song; onAgain: () => void })
       )}
 
       <button className="btn btn-secondary again-btn" onClick={onAgain}>
-        Get another song · €0,10
+        {t("card.again", { price: "€0,10" })}
       </button>
     </div>
   );

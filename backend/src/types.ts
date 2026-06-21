@@ -18,6 +18,9 @@ export interface Song {
   spotifyUrl: string | null;
   artistImageUrl: string | null;
   albumImageUrl: string | null;
+  /** community average on a 0–10 scale, null when nobody has rated yet */
+  ratingAverage: number | null;
+  ratingCount: number;
 }
 
 export type PaymentStatus = "pending" | "paid" | "expired" | "failed";

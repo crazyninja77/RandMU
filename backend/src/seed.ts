@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { db } from "./db.js";
 import { SEED_SONGS } from "./seedData.js";
 import { readCatalog } from "./catalogStore.js";
+import { seedRatingBaselines } from "./library.js";
 
 function spotifySearchUrl(artist: string, title: string): string {
   const q = encodeURIComponent(`${artist} ${title}`);
@@ -70,3 +71,7 @@ if (existing > 0 && !process.argv.includes("--force")) {
       `. Library now has ${total}.`,
   );
 }
+
+// Always give any song without ratings a community baseline (idempotent).
+const rated = seedRatingBaselines();
+if (rated > 0) console.log(`Assigned community-rating baselines to ${rated} songs.`);

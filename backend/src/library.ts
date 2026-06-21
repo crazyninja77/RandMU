@@ -19,6 +19,8 @@ interface SongRow {
   spotify_url: string | null;
   artist_image_url: string | null;
   album_image_url: string | null;
+  rating_sum: number;
+  rating_count: number;
 }
 
 function rowToSong(row: SongRow): Song {
@@ -40,7 +42,53 @@ function rowToSong(row: SongRow): Song {
     spotifyUrl: row.spotify_url,
     artistImageUrl: row.artist_image_url,
     albumImageUrl: row.album_image_url,
+    ratingAverage: row.rating_count > 0 ? row.rating_sum / row.rating_count : null,
+    ratingCount: row.rating_count,
   };
+}
+
+export interface RatingResult {
+  average: number;
+  count: number;
+}
+
+/**
+ * Record a 0–10 rating for a song and return the new community average + count.
+ * Returns null if the song does not exist.
+ */
+export function rateSong(id: string, value: number): RatingResult | null {
+  const clamped = Math.max(0, Math.min(10, value));
+  const info = db
+    .prepare(
+      "UPDATE songs SET rating_sum = rating_sum + ?, rating_count = rating_count + 1 WHERE id = ?",
+    )
+    .run(clamped, id);
+  if (info.changes === 0) return null;
+  const row = db
+    .prepare("SELECT rating_sum AS s, rating_count AS c FROM songs WHERE id = ?")
+    .get(id) as { s: number; c: number };
+  return { average: row.s / row.c, count: row.c };
+}
+
+/**
+ * Give every un-rated song a believable community-rating baseline so the
+ * "what others rated" comparison always has something to show. Idempotent:
+ * only touches rows that have no ratings yet.
+ */
+export function seedRatingBaselines(): number {
+  const ids = (
+    db.prepare("SELECT id FROM songs WHERE rating_count = 0").all() as { id: string }[]
+  ).map((r) => r.id);
+  const update = db.prepare("UPDATE songs SET rating_sum = ?, rating_count = ? WHERE id = ?");
+  const run = db.transaction((rows: string[]) => {
+    for (const id of rows) {
+      const count = 12 + Math.floor(Math.random() * 240);
+      const avg = 5.4 + Math.random() * 3.2; // 5.4 – 8.6
+      update.run(Number((avg * count).toFixed(2)), count, id);
+    }
+  });
+  run(ids);
+  return ids.length;
 }
 
 export function getRandomSong(): Song | null {

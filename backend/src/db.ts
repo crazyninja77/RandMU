@@ -26,7 +26,9 @@ db.exec(`
     spotify_track_id TEXT,
     spotify_url TEXT,
     artist_image_url TEXT,
-    album_image_url TEXT
+    album_image_url TEXT,
+    rating_sum REAL NOT NULL DEFAULT 0,
+    rating_count INTEGER NOT NULL DEFAULT 0
   );
 
   CREATE TABLE IF NOT EXISTS payments (
@@ -53,6 +55,8 @@ const songCols = new Set(
 for (const [col, ddl] of [
   ["artist_image_url", "ALTER TABLE songs ADD COLUMN artist_image_url TEXT"],
   ["album_image_url", "ALTER TABLE songs ADD COLUMN album_image_url TEXT"],
+  ["rating_sum", "ALTER TABLE songs ADD COLUMN rating_sum REAL NOT NULL DEFAULT 0"],
+  ["rating_count", "ALTER TABLE songs ADD COLUMN rating_count INTEGER NOT NULL DEFAULT 0"],
 ] as const) {
   if (!songCols.has(col)) db.exec(ddl);
 }
