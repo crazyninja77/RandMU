@@ -15,6 +15,9 @@
 import { randomUUID } from "node:crypto";
 import { db } from "./db.js";
 import { GENRE_QUERIES, MARKETS, COUNTRY_QUERIES } from "./ingestSeeds.js";
+import { readCandidates } from "./sources/index.js";
+import type { Candidate } from "./sources/types.js";
+import { readCatalog, writeCatalog, type CatalogSong } from "./catalogStore.js";
 
 const CLIENT_ID = process.env.SPOTIFY_CLIENT_ID;
 const CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET;
@@ -283,6 +286,132 @@ async function resolveSeed() {
   console.log(`Resolved ${resolved}/${rows.length} seed songs.`);
 }
 
+function normName(s: string): string {
+  return s
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+/** Find the Spotify track(s) for a harvested candidate. */
+async function resolveCandidateTracks(
+  cand: Candidate,
+  tracksPerArtist: number,
+): Promise<SpotifyTrack[]> {
+  const market = cand.countryCode || "US";
+  const query = cand.title ? `${cand.title} ${cand.artist}` : `artist:"${cand.artist}"`;
+  let hits: SpotifyTrack[];
+  try {
+    hits = await searchTracks(query, market, 10);
+  } catch (e) {
+    if (e instanceof RateLimitedError) throw e;
+    // bad/unsupported market code etc. -> retry against a global market
+    hits = await searchTracks(query, "US", 10);
+  }
+  const want = normName(cand.artist);
+  const matches = hits.filter((h) => {
+    const got = normName(h.artists[0]?.name ?? "");
+    return got === want || got.includes(want) || want.includes(got);
+  });
+  const pool = matches.length ? matches : cand.title ? hits.slice(0, 1) : [];
+  // de-dupe by track title so we don't store the same song many times
+  const out: SpotifyTrack[] = [];
+  const seenTitles = new Set<string>();
+  for (const t of pool) {
+    const key = normName(t.name);
+    if (!key || seenTitles.has(key)) continue;
+    seenTitles.add(key);
+    out.push(t);
+    if (out.length >= (cand.title ? 1 : tracksPerArtist)) break;
+  }
+  return out;
+}
+
+async function buildCatalogSong(t: SpotifyTrack, cand: Candidate): Promise<CatalogSong> {
+  const primaryId = t.artists[0]?.id;
+  let artistGenres: string[] = [];
+  let artistImage: string | null = null;
+  if (primaryId) {
+    await getArtists([primaryId]);
+    const a = artistCache.get(primaryId);
+    artistGenres = a?.genres ?? [];
+    artistImage = pickImage(a?.images);
+  }
+  const genres = [cand.genre, ...artistGenres].filter(Boolean);
+  const { genre, subgenre } = deriveGenre(genres);
+  const country = cand.country;
+  return {
+    id: randomUUID(),
+    title: t.name,
+    artist: t.artists.map((a) => a.name).join(", "),
+    artistDescription: describeArtist(t.artists[0]?.name ?? cand.artist, country, genres),
+    songDescription: describeSong(t, country, genre, subgenre),
+    country,
+    language: cand.language,
+    genre,
+    subgenre,
+    albumName: t.album.album_type === "single" ? null : t.album.name,
+    albumType: t.album.album_type,
+    albumDescription: null,
+    year: t.album.release_date ? Number(t.album.release_date.slice(0, 4)) || null : null,
+    spotifyTrackId: t.id,
+    spotifyUrl: t.external_urls.spotify,
+    artistImageUrl: artistImage,
+    albumImageUrl: pickImage(t.album.images),
+  };
+}
+
+/** Resolve the harvested candidate pool into playable songs + persist catalog. */
+async function resolveCandidates(target: number, tracksPerArtist: number) {
+  const candidates = readCandidates();
+  if (!candidates.length) {
+    console.log("No candidates found. Run `npm run harvest` first.");
+    return;
+  }
+  console.log(`Resolving ${candidates.length} harvested candidates (target ${target})...`);
+
+  // Resume from any previously persisted catalog.
+  const bySpotify = new Map<string, CatalogSong>();
+  for (const s of readCatalog()) bySpotify.set(s.spotifyTrackId, s);
+  for (const s of bySpotify.values()) upsert.run(s);
+  const startCount = bySpotify.size;
+
+  let processed = 0;
+  let added = 0;
+  const flush = () => writeCatalog([...bySpotify.values()]);
+  try {
+    for (const cand of candidates) {
+      if (target && bySpotify.size >= target) break;
+      processed++;
+      let tracks: SpotifyTrack[] = [];
+      try {
+        tracks = await resolveCandidateTracks(cand, tracksPerArtist);
+      } catch (e) {
+        if (e instanceof RateLimitedError) throw e;
+        continue;
+      }
+      for (const t of tracks) {
+        if (!t.id || bySpotify.has(t.id)) continue;
+        const row = await buildCatalogSong(t, cand);
+        bySpotify.set(t.id, row);
+        upsert.run(row);
+        added++;
+      }
+      if (processed % 200 === 0) {
+        flush();
+        console.log(`  ${processed}/${candidates.length} candidates, ${bySpotify.size} songs`);
+      }
+    }
+  } finally {
+    flush();
+  }
+  console.log(
+    `Resolve done. Added ${added} (was ${startCount}); catalog now ${bySpotify.size} songs.`,
+  );
+}
+
 async function buildCatalog(target: number) {
   const seen = existingTrackIds();
   const insertMany = db.transaction((items: any[]) => {
@@ -359,7 +488,11 @@ async function main() {
   const targetIdx = args.indexOf("--target");
   const target = targetIdx >= 0 ? Number(args[targetIdx + 1]) : 10000;
 
+  const tpaIdx = args.indexOf("--tracks-per-artist");
+  const tracksPerArtist = tpaIdx >= 0 ? Number(args[tpaIdx + 1]) || 3 : 3;
+
   if (args.includes("--resolve") || args.length === 0) await resolveSeed();
+  if (args.includes("--from-candidates")) await resolveCandidates(target, tracksPerArtist);
   if (args.includes("--catalog")) await buildCatalog(target);
   console.log("Done.");
 }

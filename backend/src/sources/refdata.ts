@@ -1,0 +1,245 @@
+/**
+ * Reference data for diverse, non-Western-centric harvesting.
+ *
+ * COUNTRIES: ISO 3166-1 alpha-2 code -> display name + primary language(s).
+ * The language list is approximate (used as a fallback when a source does not
+ * expose a per-song language) and deliberately favours local/national languages.
+ *
+ * GENRE_TAGS: a wide spread of genres/styles, weighted toward non-Western and
+ * regional traditions, used as MusicBrainz tag filters and search queries.
+ */
+
+export interface CountryRef {
+  code: string; // ISO 3166-1 alpha-2 (as used by MusicBrainz `country:` and Spotify market)
+  name: string;
+  languages: string[];
+}
+
+// Broad coverage across every inhabited region. Languages are the main local
+// language(s); English is omitted unless it is genuinely dominant locally.
+export const COUNTRIES: CountryRef[] = [
+  // --- Africa ---
+  { code: "DZ", name: "Algeria", languages: ["Arabic", "Berber"] },
+  { code: "AO", name: "Angola", languages: ["Portuguese", "Kimbundu"] },
+  { code: "BJ", name: "Benin", languages: ["French", "Fon"] },
+  { code: "BW", name: "Botswana", languages: ["Setswana", "English"] },
+  { code: "BF", name: "Burkina Faso", languages: ["French", "Mooré"] },
+  { code: "BI", name: "Burundi", languages: ["Kirundi"] },
+  { code: "CM", name: "Cameroon", languages: ["French", "English"] },
+  { code: "CV", name: "Cape Verde", languages: ["Portuguese", "Cape Verdean Creole"] },
+  { code: "CF", name: "Central African Republic", languages: ["Sango", "French"] },
+  { code: "TD", name: "Chad", languages: ["Arabic", "French"] },
+  { code: "KM", name: "Comoros", languages: ["Comorian", "Arabic"] },
+  { code: "CG", name: "Congo", languages: ["French", "Lingala"] },
+  { code: "CD", name: "DR Congo", languages: ["Lingala", "French", "Swahili"] },
+  { code: "CI", name: "Côte d'Ivoire", languages: ["French", "Dioula"] },
+  { code: "DJ", name: "Djibouti", languages: ["Somali", "Afar", "Arabic"] },
+  { code: "EG", name: "Egypt", languages: ["Arabic"] },
+  { code: "GQ", name: "Equatorial Guinea", languages: ["Spanish", "French"] },
+  { code: "ER", name: "Eritrea", languages: ["Tigrinya", "Arabic"] },
+  { code: "ET", name: "Ethiopia", languages: ["Amharic", "Oromo", "Tigrinya"] },
+  { code: "GA", name: "Gabon", languages: ["French"] },
+  { code: "GM", name: "Gambia", languages: ["Mandinka", "Wolof"] },
+  { code: "GH", name: "Ghana", languages: ["English", "Akan", "Twi"] },
+  { code: "GN", name: "Guinea", languages: ["French", "Maninka", "Susu"] },
+  { code: "GW", name: "Guinea-Bissau", languages: ["Portuguese", "Crioulo"] },
+  { code: "KE", name: "Kenya", languages: ["Swahili", "English"] },
+  { code: "LS", name: "Lesotho", languages: ["Sesotho"] },
+  { code: "LR", name: "Liberia", languages: ["English"] },
+  { code: "LY", name: "Libya", languages: ["Arabic"] },
+  { code: "MG", name: "Madagascar", languages: ["Malagasy", "French"] },
+  { code: "MW", name: "Malawi", languages: ["Chichewa", "English"] },
+  { code: "ML", name: "Mali", languages: ["French", "Bambara"] },
+  { code: "MR", name: "Mauritania", languages: ["Arabic"] },
+  { code: "MU", name: "Mauritius", languages: ["Mauritian Creole", "French"] },
+  { code: "MA", name: "Morocco", languages: ["Arabic", "Berber"] },
+  { code: "MZ", name: "Mozambique", languages: ["Portuguese"] },
+  { code: "NA", name: "Namibia", languages: ["English", "Afrikaans", "Oshiwambo"] },
+  { code: "NE", name: "Niger", languages: ["French", "Hausa"] },
+  { code: "NG", name: "Nigeria", languages: ["English", "Yoruba", "Igbo", "Hausa"] },
+  { code: "RW", name: "Rwanda", languages: ["Kinyarwanda"] },
+  { code: "ST", name: "São Tomé and Príncipe", languages: ["Portuguese"] },
+  { code: "SN", name: "Senegal", languages: ["French", "Wolof"] },
+  { code: "SC", name: "Seychelles", languages: ["Seychellois Creole", "French"] },
+  { code: "SL", name: "Sierra Leone", languages: ["English", "Krio"] },
+  { code: "SO", name: "Somalia", languages: ["Somali", "Arabic"] },
+  { code: "ZA", name: "South Africa", languages: ["Zulu", "Xhosa", "Afrikaans", "English"] },
+  { code: "SS", name: "South Sudan", languages: ["English", "Arabic"] },
+  { code: "SD", name: "Sudan", languages: ["Arabic"] },
+  { code: "SZ", name: "Eswatini", languages: ["Swazi", "English"] },
+  { code: "TZ", name: "Tanzania", languages: ["Swahili", "English"] },
+  { code: "TG", name: "Togo", languages: ["French", "Ewe"] },
+  { code: "TN", name: "Tunisia", languages: ["Arabic"] },
+  { code: "UG", name: "Uganda", languages: ["English", "Swahili", "Luganda"] },
+  { code: "ZM", name: "Zambia", languages: ["English", "Bemba", "Nyanja"] },
+  { code: "ZW", name: "Zimbabwe", languages: ["Shona", "Ndebele", "English"] },
+
+  // --- Middle East ---
+  { code: "BH", name: "Bahrain", languages: ["Arabic"] },
+  { code: "IR", name: "Iran", languages: ["Persian"] },
+  { code: "IQ", name: "Iraq", languages: ["Arabic", "Kurdish"] },
+  { code: "IL", name: "Israel", languages: ["Hebrew", "Arabic"] },
+  { code: "JO", name: "Jordan", languages: ["Arabic"] },
+  { code: "KW", name: "Kuwait", languages: ["Arabic"] },
+  { code: "LB", name: "Lebanon", languages: ["Arabic"] },
+  { code: "OM", name: "Oman", languages: ["Arabic"] },
+  { code: "PS", name: "Palestine", languages: ["Arabic"] },
+  { code: "QA", name: "Qatar", languages: ["Arabic"] },
+  { code: "SA", name: "Saudi Arabia", languages: ["Arabic"] },
+  { code: "SY", name: "Syria", languages: ["Arabic"] },
+  { code: "TR", name: "Turkey", languages: ["Turkish"] },
+  { code: "AE", name: "United Arab Emirates", languages: ["Arabic"] },
+  { code: "YE", name: "Yemen", languages: ["Arabic"] },
+
+  // --- Central & South Asia ---
+  { code: "AF", name: "Afghanistan", languages: ["Pashto", "Dari"] },
+  { code: "AM", name: "Armenia", languages: ["Armenian"] },
+  { code: "AZ", name: "Azerbaijan", languages: ["Azerbaijani"] },
+  { code: "BD", name: "Bangladesh", languages: ["Bengali"] },
+  { code: "BT", name: "Bhutan", languages: ["Dzongkha"] },
+  { code: "GE", name: "Georgia", languages: ["Georgian"] },
+  { code: "IN", name: "India", languages: ["Hindi", "Tamil", "Punjabi", "Bengali", "Telugu"] },
+  { code: "KZ", name: "Kazakhstan", languages: ["Kazakh", "Russian"] },
+  { code: "KG", name: "Kyrgyzstan", languages: ["Kyrgyz", "Russian"] },
+  { code: "MV", name: "Maldives", languages: ["Dhivehi"] },
+  { code: "MN", name: "Mongolia", languages: ["Mongolian"] },
+  { code: "NP", name: "Nepal", languages: ["Nepali"] },
+  { code: "PK", name: "Pakistan", languages: ["Urdu", "Punjabi", "Sindhi"] },
+  { code: "LK", name: "Sri Lanka", languages: ["Sinhala", "Tamil"] },
+  { code: "TJ", name: "Tajikistan", languages: ["Tajik"] },
+  { code: "TM", name: "Turkmenistan", languages: ["Turkmen"] },
+  { code: "UZ", name: "Uzbekistan", languages: ["Uzbek"] },
+
+  // --- East & Southeast Asia ---
+  { code: "BN", name: "Brunei", languages: ["Malay"] },
+  { code: "KH", name: "Cambodia", languages: ["Khmer"] },
+  { code: "CN", name: "China", languages: ["Mandarin", "Cantonese"] },
+  { code: "HK", name: "Hong Kong", languages: ["Cantonese"] },
+  { code: "ID", name: "Indonesia", languages: ["Indonesian", "Javanese", "Sundanese"] },
+  { code: "JP", name: "Japan", languages: ["Japanese"] },
+  { code: "LA", name: "Laos", languages: ["Lao"] },
+  { code: "MO", name: "Macau", languages: ["Cantonese", "Portuguese"] },
+  { code: "MY", name: "Malaysia", languages: ["Malay"] },
+  { code: "MM", name: "Myanmar", languages: ["Burmese"] },
+  { code: "KP", name: "North Korea", languages: ["Korean"] },
+  { code: "PH", name: "Philippines", languages: ["Filipino", "Tagalog"] },
+  { code: "SG", name: "Singapore", languages: ["English", "Malay", "Mandarin"] },
+  { code: "KR", name: "South Korea", languages: ["Korean"] },
+  { code: "TW", name: "Taiwan", languages: ["Mandarin", "Hokkien"] },
+  { code: "TH", name: "Thailand", languages: ["Thai"] },
+  { code: "TL", name: "Timor-Leste", languages: ["Tetum", "Portuguese"] },
+  { code: "VN", name: "Vietnam", languages: ["Vietnamese"] },
+
+  // --- Europe (non-Anglo emphasis) ---
+  { code: "AL", name: "Albania", languages: ["Albanian"] },
+  { code: "AT", name: "Austria", languages: ["German"] },
+  { code: "BY", name: "Belarus", languages: ["Belarusian", "Russian"] },
+  { code: "BE", name: "Belgium", languages: ["Dutch", "French"] },
+  { code: "BA", name: "Bosnia and Herzegovina", languages: ["Bosnian"] },
+  { code: "BG", name: "Bulgaria", languages: ["Bulgarian"] },
+  { code: "HR", name: "Croatia", languages: ["Croatian"] },
+  { code: "CY", name: "Cyprus", languages: ["Greek", "Turkish"] },
+  { code: "CZ", name: "Czechia", languages: ["Czech"] },
+  { code: "DK", name: "Denmark", languages: ["Danish"] },
+  { code: "EE", name: "Estonia", languages: ["Estonian"] },
+  { code: "FI", name: "Finland", languages: ["Finnish"] },
+  { code: "FR", name: "France", languages: ["French"] },
+  { code: "DE", name: "Germany", languages: ["German"] },
+  { code: "GR", name: "Greece", languages: ["Greek"] },
+  { code: "HU", name: "Hungary", languages: ["Hungarian"] },
+  { code: "IS", name: "Iceland", languages: ["Icelandic"] },
+  { code: "IT", name: "Italy", languages: ["Italian"] },
+  { code: "XK", name: "Kosovo", languages: ["Albanian", "Serbian"] },
+  { code: "LV", name: "Latvia", languages: ["Latvian"] },
+  { code: "LT", name: "Lithuania", languages: ["Lithuanian"] },
+  { code: "MK", name: "North Macedonia", languages: ["Macedonian"] },
+  { code: "MT", name: "Malta", languages: ["Maltese"] },
+  { code: "MD", name: "Moldova", languages: ["Romanian"] },
+  { code: "ME", name: "Montenegro", languages: ["Montenegrin"] },
+  { code: "NL", name: "Netherlands", languages: ["Dutch"] },
+  { code: "NO", name: "Norway", languages: ["Norwegian"] },
+  { code: "PL", name: "Poland", languages: ["Polish"] },
+  { code: "PT", name: "Portugal", languages: ["Portuguese"] },
+  { code: "RO", name: "Romania", languages: ["Romanian"] },
+  { code: "RU", name: "Russia", languages: ["Russian"] },
+  { code: "RS", name: "Serbia", languages: ["Serbian"] },
+  { code: "SK", name: "Slovakia", languages: ["Slovak"] },
+  { code: "SI", name: "Slovenia", languages: ["Slovenian"] },
+  { code: "ES", name: "Spain", languages: ["Spanish", "Catalan", "Basque", "Galician"] },
+  { code: "SE", name: "Sweden", languages: ["Swedish"] },
+  { code: "CH", name: "Switzerland", languages: ["German", "French", "Italian"] },
+  { code: "UA", name: "Ukraine", languages: ["Ukrainian"] },
+
+  // --- Americas (non-US/UK emphasis) ---
+  { code: "AR", name: "Argentina", languages: ["Spanish"] },
+  { code: "BO", name: "Bolivia", languages: ["Spanish", "Quechua", "Aymara"] },
+  { code: "BR", name: "Brazil", languages: ["Portuguese"] },
+  { code: "CL", name: "Chile", languages: ["Spanish"] },
+  { code: "CO", name: "Colombia", languages: ["Spanish"] },
+  { code: "CR", name: "Costa Rica", languages: ["Spanish"] },
+  { code: "CU", name: "Cuba", languages: ["Spanish"] },
+  { code: "DO", name: "Dominican Republic", languages: ["Spanish"] },
+  { code: "EC", name: "Ecuador", languages: ["Spanish", "Quechua"] },
+  { code: "SV", name: "El Salvador", languages: ["Spanish"] },
+  { code: "GT", name: "Guatemala", languages: ["Spanish"] },
+  { code: "HT", name: "Haiti", languages: ["Haitian Creole", "French"] },
+  { code: "HN", name: "Honduras", languages: ["Spanish"] },
+  { code: "JM", name: "Jamaica", languages: ["English", "Jamaican Patois"] },
+  { code: "MX", name: "Mexico", languages: ["Spanish"] },
+  { code: "NI", name: "Nicaragua", languages: ["Spanish"] },
+  { code: "PA", name: "Panama", languages: ["Spanish"] },
+  { code: "PY", name: "Paraguay", languages: ["Spanish", "Guaraní"] },
+  { code: "PE", name: "Peru", languages: ["Spanish", "Quechua"] },
+  { code: "PR", name: "Puerto Rico", languages: ["Spanish"] },
+  { code: "TT", name: "Trinidad and Tobago", languages: ["English"] },
+  { code: "UY", name: "Uruguay", languages: ["Spanish"] },
+  { code: "VE", name: "Venezuela", languages: ["Spanish"] },
+
+  // --- Oceania ---
+  { code: "AU", name: "Australia", languages: ["English"] },
+  { code: "FJ", name: "Fiji", languages: ["Fijian", "English"] },
+  { code: "NC", name: "New Caledonia", languages: ["French"] },
+  { code: "NZ", name: "New Zealand", languages: ["English", "Māori"] },
+  { code: "PG", name: "Papua New Guinea", languages: ["Tok Pisin", "English"] },
+  { code: "WS", name: "Samoa", languages: ["Samoan"] },
+  { code: "TO", name: "Tonga", languages: ["Tongan"] },
+  { code: "VU", name: "Vanuatu", languages: ["Bislama"] },
+];
+
+export const COUNTRY_BY_CODE = new Map(COUNTRIES.map((c) => [c.code, c]));
+
+// A wide, deliberately non-Western-leaning spread of genres/styles. Used both as
+// MusicBrainz tag filters and as free-text search terms.
+export const GENRE_TAGS: string[] = [
+  // African
+  "afrobeat", "afrobeats", "highlife", "soukous", "mbalax", "juju", "fuji",
+  "amapiano", "gqom", "kwaito", "bongo flava", "taarab", "benga", "chimurenga",
+  "mbaqanga", "isicathamiya", "ethio-jazz", "ethiopique", "raï", "gnawa",
+  "chaabi", "morna", "coladeira", "funaná", "semba", "kizomba", "makossa",
+  "bikutsi", "ndombolo", "kuduro", "maloya", "sega", "salegy", "tuareg",
+  "desert blues", "griot", "afro-funk", "afro-house",
+  // Middle East / North Africa
+  "arabic pop", "khaleeji", "dabke", "mizrahi", "classical arabic", "tarab",
+  "iranian pop", "persian classical", "turkish folk", "anatolian rock",
+  "arabesque", "kurdish",
+  // South / Central Asia
+  "qawwali", "ghazal", "bhangra", "filmi", "bollywood", "carnatic",
+  "hindustani", "sufi", "baul", "dangdut", "morlam", "luk thung",
+  "mongolian folk", "throat singing", "uzbek pop", "tajik",
+  // East / Southeast Asia
+  "city pop", "enka", "j-pop", "k-pop", "cantopop", "mandopop", "hokkien pop",
+  "gamelan", "kroncong", "pinoy rock", "opm", "vietnamese pop", "mor lam",
+  "khmer rock", "luk krung", "min'yō", "trot",
+  // Latin America / Caribbean
+  "cumbia", "vallenato", "salsa", "son cubano", "bolero", "bachata",
+  "merengue", "reggaeton", "samba", "bossa nova", "mpb", "forró", "axé",
+  "tropicalia", "tango", "chacarera", "huayno", "andean", "norteño",
+  "ranchera", "mariachi", "son jarocho", "calypso", "soca", "zouk",
+  "kompa", "mento", "dancehall", "champeta",
+  // Europe (folk / regional)
+  "fado", "flamenco", "rebetiko", "laïko", "klezmer", "balkan brass",
+  "turbo-folk", "manele", "chanson", "schlager", "sevdah", "tarantella",
+  "celtic", "nordic folk", "yodeling", "polka", "tango oriental",
+  // Oceania / global fusion
+  "māori", "island reggae", "world fusion", "global bass", "ethnotronica",
+];
