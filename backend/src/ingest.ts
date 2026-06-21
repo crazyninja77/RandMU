@@ -46,15 +46,39 @@ async function getToken(): Promise<string> {
   return token;
 }
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+// Minimum gap between requests so we don't hammer the API into a long ban.
+const MIN_GAP_MS = 150;
+// If Spotify hands back a retry-after longer than this, abort instead of
+// sleeping (a dev-mode app can get banned for ~24h).
+const MAX_RETRY_AFTER_S = 60;
+let lastCall = 0;
+
+export class RateLimitedError extends Error {
+  constructor(public retryAfterSeconds: number) {
+    super(
+      `Spotify rate-limited; retry-after ~${retryAfterSeconds}s ` +
+        `(~${Math.round(retryAfterSeconds / 3600)}h). Try again later.`,
+    );
+    this.name = "RateLimitedError";
+  }
+}
+
 async function spotify(path: string): Promise<any> {
   for (let attempt = 0; attempt < 5; attempt++) {
+    const gap = lastCall + MIN_GAP_MS - Date.now();
+    if (gap > 0) await sleep(gap);
+    lastCall = Date.now();
+
     const t = await getToken();
     const res = await fetch(`https://api.spotify.com/v1${path}`, {
       headers: { Authorization: `Bearer ${t}` },
     });
     if (res.status === 429) {
       const retry = Number(res.headers.get("retry-after") ?? "2");
-      await new Promise((r) => setTimeout(r, (retry + 1) * 1000));
+      if (retry > MAX_RETRY_AFTER_S) throw new RateLimitedError(retry);
+      await sleep((retry + 1) * 1000);
       continue;
     }
     if (res.status === 401) {
@@ -98,12 +122,28 @@ function pickImage(images: SpotifyImage[] | undefined): string | null {
   return (medium ?? images[0]).url;
 }
 
+// Some apps reject the documented max (limit=50) with "Invalid limit"; this is
+// auto-lowered the first time that happens and reused for later calls.
+let searchCap = 50;
+
 async function searchTracks(query: string, market: string, limit = 50, offset = 0) {
   const q = encodeURIComponent(query);
-  const json = await spotify(
-    `/search?q=${q}&type=track&market=${market}&limit=${limit}&offset=${offset}`,
-  );
-  return (json.tracks?.items ?? []) as SpotifyTrack[];
+  for (;;) {
+    const effective = Math.min(limit, searchCap);
+    try {
+      const json = await spotify(
+        `/search?q=${q}&type=track&market=${market}&limit=${effective}&offset=${offset}`,
+      );
+      return (json.tracks?.items ?? []) as SpotifyTrack[];
+    } catch (e) {
+      if (/invalid limit/i.test(String(e)) && effective > 1) {
+        searchCap = Math.max(1, Math.floor(effective / 2));
+        console.log(`  (search limit too high; lowering to ${searchCap})`);
+        continue;
+      }
+      throw e;
+    }
+  }
 }
 
 const artistCache = new Map<string, SpotifyArtist>();
@@ -271,6 +311,7 @@ async function buildCatalog(target: number) {
     try {
       tracks = await searchTracks(job.query, job.market, 50, 0);
     } catch (e) {
+      if (e instanceof RateLimitedError) throw e;
       console.warn(`  search failed (${job.query}/${job.market}): ${(e as Error).message}`);
       continue;
     }
@@ -324,6 +365,11 @@ async function main() {
 }
 
 main().catch((e) => {
+  if (e instanceof RateLimitedError) {
+    console.error(`\n${e.message}`);
+    console.error("Already-ingested songs are saved; re-run this command later to continue.");
+    process.exit(2);
+  }
   console.error(e);
   process.exit(1);
 });

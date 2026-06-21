@@ -259,6 +259,9 @@ body {
   color: #ffc0dd;
   border-color: transparent;
 }
+.tag-year {
+  font-variant-numeric: tabular-nums;
+}
 
 .spotify-embed {
   border-radius: 12px;

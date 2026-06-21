@@ -51,6 +51,7 @@ export function SongCard({ song, onAgain }: { song: Song; onAgain: () => void })
         {song.language && <span className="tag">{song.language}</span>}
         {song.genre && <span className="tag tag-genre">{song.genre}</span>}
         {song.subgenre && <span className="tag">{song.subgenre}</span>}
+        {song.year && <span className="tag tag-year">{song.year}</span>}
       </div>
 
       <SpotifyPlayer song={song} />
