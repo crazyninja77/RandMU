@@ -406,17 +406,19 @@ body {
 .rate-marker {
   position: absolute;
   top: 50%;
-  width: 4px;
+  width: 22px;
   height: 22px;
   transform: translate(-50%, -50%);
-  border-radius: 2px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
 }
 .rate-marker-you {
-  background: #fff;
+  border: 3px solid var(--accent);
   z-index: 2;
 }
 .rate-marker-avg {
-  background: #ffd166;
+  border: 3px solid #ffd166;
   z-index: 1;
 }
 .rate-bubble {
