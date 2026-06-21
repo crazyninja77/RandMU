@@ -49,13 +49,14 @@ export function RatingSlider({
     }
   }, [storageKey, initialAverage, initialCount]);
 
-  async function submit() {
+  async function submit(rating: number) {
+    if (submitting || result) return;
     setSubmitting(true);
     setError(null);
     try {
-      const { average, count } = await api.rateSong(songId, value);
-      setResult({ you: value, average, count });
-      localStorage.setItem(storageKey, JSON.stringify({ you: value } satisfies Stored));
+      const { average, count } = await api.rateSong(songId, rating);
+      setResult({ you: rating, average, count });
+      localStorage.setItem(storageKey, JSON.stringify({ you: rating } satisfies Stored));
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -102,6 +103,8 @@ export function RatingSlider({
               step={0.1}
               value={value}
               onChange={(e) => setValue(Number(e.target.value))}
+              onPointerUp={(e) => submit(Number((e.target as HTMLInputElement).value))}
+              onKeyUp={(e) => submit(Number((e.target as HTMLInputElement).value))}
               disabled={submitting}
               aria-label={t("rate.title")}
             />
@@ -111,9 +114,6 @@ export function RatingSlider({
             <span>{MIN}</span>
             <span>{MAX}</span>
           </div>
-          <button className="btn btn-secondary rate-submit" onClick={submit} disabled={submitting}>
-            {t("rate.submit")}
-          </button>
           {error && <p className="error">{error}</p>}
         </>
       )}
