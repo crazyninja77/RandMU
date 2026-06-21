@@ -1,6 +1,18 @@
 import type { Song } from "../types";
 import { SpotifyPlayer } from "./SpotifyPlayer";
 
+function Paragraphs({ text }: { text: string }) {
+  const parts = text.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
+  if (!parts.length) return <p>—</p>;
+  return (
+    <>
+      {parts.map((p, idx) => (
+        <p key={idx}>{p}</p>
+      ))}
+    </>
+  );
+}
+
 function albumLabel(song: Song): string | null {
   if (!song.albumName) return null;
   const kind = song.albumType === "ep" ? "EP" : song.albumType === "album" ? "Album" : null;
@@ -58,12 +70,12 @@ export function SongCard({ song, onAgain }: { song: Song; onAgain: () => void })
 
       <div className="desc-block">
         <h3>About the song</h3>
-        <p>{song.songDescription || "—"}</p>
+        <Paragraphs text={song.songDescription || "—"} />
       </div>
 
       <div className="desc-block">
         <h3>About {song.artist}</h3>
-        <p>{song.artistDescription || "—"}</p>
+        <Paragraphs text={song.artistDescription || "—"} />
       </div>
 
       {album && (

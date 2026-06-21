@@ -18,6 +18,12 @@ import { GENRE_QUERIES, MARKETS, COUNTRY_QUERIES } from "./ingestSeeds.js";
 import { readCandidates } from "./sources/index.js";
 import type { Candidate } from "./sources/types.js";
 import { readCatalog, writeCatalog, type CatalogSong } from "./catalogStore.js";
+import {
+  describeSong,
+  describeArtist,
+  describeAlbum,
+  type DescInput,
+} from "./sources/context.js";
 
 const CLIENT_ID = process.env.SPOTIFY_CLIENT_ID;
 const CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET;
@@ -190,40 +196,44 @@ function deriveGenre(genres: string[]): { genre: string; subgenre: string } {
   return { genre: "World", subgenre };
 }
 
-function describeSong(t: SpotifyTrack, country: string, genre: string, subgenre: string) {
-  const year = t.album.release_date?.slice(0, 4);
-  const where = country ? ` from ${country}` : "";
-  const style = subgenre || genre;
-  const artistName = t.artists[0]?.name ?? "the artist";
-  const albumBit =
-    t.album.album_type === "single"
-      ? "It was released as a standalone single"
-      : `It appears on the ${t.album.album_type} \"${t.album.name}\"`;
-  const others =
-    t.artists.length > 1
-      ? ` It features ${t.artists.slice(1).map((a) => a.name).join(", ")}.`
-      : "";
-  return (
-    `\"${t.name}\" is a ${style} track by ${artistName}${where}. ` +
-    `${albumBit}${year ? ` (${year})` : ""}, and is part of RandMU's deliberately diverse, ` +
-    `non-Western-centric library.${others}`
-  );
-}
-
-function describeArtist(name: string, country: string, genres: string[]) {
-  const where = country ? ` from ${country}` : "";
-  const styles = genres.slice(0, 3).map(titleCase).join(", ");
-  if (styles) {
-    return (
-      `${name} is an artist${where} whose music spans ${styles}. ` +
-      `They are part of a global music landscape that RandMU surfaces beyond the Western mainstream, ` +
-      `representing the sounds and traditions of their region.`
-    );
-  }
-  return (
-    `${name} is an artist${where} featured in RandMU's worldwide library, ` +
-    `chosen to broaden listeners beyond the Western mainstream.`
-  );
+/**
+ * Build the rich, multi-paragraph descriptions for a resolved track. `genreTag`
+ * is the raw harvested tag (e.g. "ethio-jazz") which carries the best story;
+ * for the search-based catalog path it can be empty and we fall back to the
+ * Spotify artist genres.
+ */
+function makeDescriptions(
+  t: SpotifyTrack,
+  opts: {
+    country: string;
+    countryCode: string;
+    language: string;
+    genreTag: string;
+    genreBucket: string;
+    subgenre: string;
+    artistGenres: string[];
+  },
+): { artistDescription: string; songDescription: string; albumDescription: string | null } {
+  const input: DescInput = {
+    title: t.name,
+    artistName: t.artists[0]?.name ?? "the artist",
+    country: opts.country,
+    countryCode: opts.countryCode,
+    language: opts.language,
+    genreTag: opts.genreTag,
+    genreBucket: opts.genreBucket,
+    subgenre: opts.subgenre,
+    artistGenres: opts.artistGenres,
+    albumName: t.album.album_type === "single" ? null : t.album.name,
+    albumType: t.album.album_type,
+    year: t.album.release_date ? Number(t.album.release_date.slice(0, 4)) || null : null,
+    featured: t.artists.slice(1).map((a) => a.name),
+  };
+  return {
+    artistDescription: describeArtist(input),
+    songDescription: describeSong(input),
+    albumDescription: describeAlbum(input),
+  };
 }
 
 const upsert = db.prepare(`
@@ -342,19 +352,28 @@ async function buildCatalogSong(t: SpotifyTrack, cand: Candidate): Promise<Catal
   const genres = [cand.genre, ...artistGenres].filter(Boolean);
   const { genre, subgenre } = deriveGenre(genres);
   const country = cand.country;
+  const desc = makeDescriptions(t, {
+    country,
+    countryCode: cand.countryCode,
+    language: cand.language,
+    genreTag: cand.genre,
+    genreBucket: genre,
+    subgenre,
+    artistGenres,
+  });
   return {
     id: randomUUID(),
     title: t.name,
     artist: t.artists.map((a) => a.name).join(", "),
-    artistDescription: describeArtist(t.artists[0]?.name ?? cand.artist, country, genres),
-    songDescription: describeSong(t, country, genre, subgenre),
+    artistDescription: desc.artistDescription,
+    songDescription: desc.songDescription,
     country,
     language: cand.language,
     genre,
     subgenre,
     albumName: t.album.album_type === "single" ? null : t.album.name,
     albumType: t.album.album_type,
-    albumDescription: null,
+    albumDescription: desc.albumDescription,
     year: t.album.release_date ? Number(t.album.release_date.slice(0, 4)) || null : null,
     spotifyTrackId: t.id,
     spotifyUrl: t.external_urls.spotify,
@@ -456,19 +475,28 @@ async function buildCatalog(target: number) {
       const { genre, subgenre } = deriveGenre(genres);
       const country = job.country;
       seen.add(t.id);
+      const desc = makeDescriptions(t, {
+        country,
+        countryCode: job.market,
+        language: "",
+        genreTag: "",
+        genreBucket: genre,
+        subgenre,
+        artistGenres: genres,
+      });
       return {
         id: randomUUID(),
         title: t.name,
         artist: t.artists.map((a) => a.name).join(", "),
-        artistDescription: describeArtist(t.artists[0]?.name ?? "", country, genres),
-        songDescription: describeSong(t, country, genre, subgenre),
+        artistDescription: desc.artistDescription,
+        songDescription: desc.songDescription,
         country,
         language: "",
         genre,
         subgenre,
         albumName: t.album.album_type === "single" ? null : t.album.name,
         albumType: t.album.album_type,
-        albumDescription: null,
+        albumDescription: desc.albumDescription,
         year: t.album.release_date ? Number(t.album.release_date.slice(0, 4)) || null : null,
         spotifyTrackId: t.id,
         spotifyUrl: t.external_urls.spotify,
