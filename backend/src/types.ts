@@ -16,6 +16,8 @@ export interface Song {
   year: number | null;
   spotifyTrackId: string | null;
   spotifyUrl: string | null;
+  artistImageUrl: string | null;
+  albumImageUrl: string | null;
 }
 
 export type PaymentStatus = "pending" | "paid" | "expired" | "failed";

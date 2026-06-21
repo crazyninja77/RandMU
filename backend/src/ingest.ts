@@ -67,10 +67,16 @@ async function spotify(path: string): Promise<any> {
   throw new Error(`spotify ${path} failed after retries`);
 }
 
+interface SpotifyImage {
+  url: string;
+  width: number | null;
+  height: number | null;
+}
 interface SpotifyArtist {
   id: string;
   name: string;
   genres?: string[];
+  images?: SpotifyImage[];
 }
 interface SpotifyTrack {
   id: string;
@@ -81,7 +87,15 @@ interface SpotifyTrack {
     name: string;
     album_type: string;
     release_date: string;
+    images?: SpotifyImage[];
   };
+}
+
+function pickImage(images: SpotifyImage[] | undefined): string | null {
+  if (!images || !images.length) return null;
+  // prefer a medium image (~300px) for the card, fall back to the first
+  const medium = images.find((i) => (i.width ?? 0) >= 200 && (i.width ?? 0) <= 400);
+  return (medium ?? images[0]).url;
 }
 
 async function searchTracks(query: string, market: string, limit = 50, offset = 0) {
@@ -135,19 +149,36 @@ function describeSong(t: SpotifyTrack, country: string, genre: string, subgenre:
   const year = t.album.release_date?.slice(0, 4);
   const where = country ? ` from ${country}` : "";
   const style = subgenre || genre;
+  const artistName = t.artists[0]?.name ?? "the artist";
   const albumBit =
     t.album.album_type === "single"
-      ? "released as a single"
-      : `from the ${t.album.album_type} "${t.album.name}"`;
-  return `A ${style} track by ${t.artists[0]?.name}${where}, ${albumBit}${year ? ` (${year})` : ""}.`;
+      ? "It was released as a standalone single"
+      : `It appears on the ${t.album.album_type} \"${t.album.name}\"`;
+  const others =
+    t.artists.length > 1
+      ? ` It features ${t.artists.slice(1).map((a) => a.name).join(", ")}.`
+      : "";
+  return (
+    `\"${t.name}\" is a ${style} track by ${artistName}${where}. ` +
+    `${albumBit}${year ? ` (${year})` : ""}, and is part of RandMU's deliberately diverse, ` +
+    `non-Western-centric library.${others}`
+  );
 }
 
 function describeArtist(name: string, country: string, genres: string[]) {
-  const where = country ? ` based in ${country}` : "";
+  const where = country ? ` from ${country}` : "";
   const styles = genres.slice(0, 3).map(titleCase).join(", ");
-  return styles
-    ? `${name} is an artist${where} working in ${styles}.`
-    : `${name} is an artist${where}.`;
+  if (styles) {
+    return (
+      `${name} is an artist${where} whose music spans ${styles}. ` +
+      `They are part of a global music landscape that RandMU surfaces beyond the Western mainstream, ` +
+      `representing the sounds and traditions of their region.`
+    );
+  }
+  return (
+    `${name} is an artist${where} featured in RandMU's worldwide library, ` +
+    `chosen to broaden listeners beyond the Western mainstream.`
+  );
 }
 
 const upsert = db.prepare(`
@@ -155,12 +186,12 @@ const upsert = db.prepare(`
     id, title, artist, artist_description, song_description,
     country, language, genre, subgenre,
     album_name, album_type, album_description, year,
-    spotify_track_id, spotify_url
+    spotify_track_id, spotify_url, artist_image_url, album_image_url
   ) VALUES (
     @id, @title, @artist, @artistDescription, @songDescription,
     @country, @language, @genre, @subgenre,
     @albumName, @albumType, @albumDescription, @year,
-    @spotifyTrackId, @spotifyUrl
+    @spotifyTrackId, @spotifyUrl, @artistImageUrl, @albumImageUrl
   )
   ON CONFLICT(spotify_track_id) DO NOTHING
 `);
@@ -179,7 +210,8 @@ async function resolveSeed() {
   console.log(`Resolving ${rows.length} seed songs against Spotify...`);
   let resolved = 0;
   const update = db.prepare(
-    "UPDATE songs SET spotify_track_id = ?, spotify_url = ? WHERE id = ?",
+    `UPDATE songs SET spotify_track_id = ?, spotify_url = ?,
+       artist_image_url = ?, album_image_url = ? WHERE id = ?`,
   );
   for (const row of rows) {
     try {
@@ -187,7 +219,19 @@ async function resolveSeed() {
       const results = await searchTracks(`${row.title} ${cleanArtist}`, "US", 5);
       const hit = results[0];
       if (hit) {
-        update.run(hit.id, hit.external_urls.spotify, row.id);
+        let artistImage: string | null = null;
+        const artistId = hit.artists[0]?.id;
+        if (artistId) {
+          await getArtists([artistId]);
+          artistImage = pickImage(artistCache.get(artistId)?.images);
+        }
+        update.run(
+          hit.id,
+          hit.external_urls.spotify,
+          artistImage,
+          pickImage(hit.album.images),
+          row.id,
+        );
         resolved++;
       }
     } catch (e) {
@@ -256,6 +300,8 @@ async function buildCatalog(target: number) {
         year: t.album.release_date ? Number(t.album.release_date.slice(0, 4)) || null : null,
         spotifyTrackId: t.id,
         spotifyUrl: t.external_urls.spotify,
+        artistImageUrl: pickImage(artist?.images),
+        albumImageUrl: pickImage(t.album.images),
       };
     });
     insertMany(rows);

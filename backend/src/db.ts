@@ -24,7 +24,9 @@ db.exec(`
     album_description TEXT,
     year INTEGER,
     spotify_track_id TEXT,
-    spotify_url TEXT
+    spotify_url TEXT,
+    artist_image_url TEXT,
+    album_image_url TEXT
   );
 
   CREATE TABLE IF NOT EXISTS payments (
@@ -43,3 +45,14 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_songs_genre ON songs(genre);
   CREATE UNIQUE INDEX IF NOT EXISTS idx_songs_spotify ON songs(spotify_track_id);
 `);
+
+// Lightweight migrations for databases created before a column existed.
+const songCols = new Set(
+  (db.prepare("PRAGMA table_info(songs)").all() as { name: string }[]).map((c) => c.name),
+);
+for (const [col, ddl] of [
+  ["artist_image_url", "ALTER TABLE songs ADD COLUMN artist_image_url TEXT"],
+  ["album_image_url", "ALTER TABLE songs ADD COLUMN album_image_url TEXT"],
+] as const) {
+  if (!songCols.has(col)) db.exec(ddl);
+}

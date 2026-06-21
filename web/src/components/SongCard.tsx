@@ -8,12 +8,34 @@ function albumLabel(song: Song): string | null {
   return kind ? `${kind}: ${song.albumName}${yr}` : `${song.albumName}${yr}`;
 }
 
+function Thumb({
+  url,
+  label,
+  shape,
+}: {
+  url: string | null;
+  label: string;
+  shape: "circle" | "square";
+}) {
+  const cls = shape === "circle" ? "thumb thumb-circle" : "thumb thumb-square";
+  if (url) {
+    return <img className={cls} src={url} alt={label} loading="lazy" />;
+  }
+  const initial = label.trim().charAt(0).toUpperCase() || "?";
+  return (
+    <div className={`${cls} thumb-fallback`} aria-hidden="true">
+      {initial}
+    </div>
+  );
+}
+
 export function SongCard({ song, onAgain }: { song: Song; onAgain: () => void }) {
   const album = albumLabel(song);
   return (
     <div className="card song-card">
       <div className="song-head">
-        <div>
+        <Thumb url={song.artistImageUrl} label={song.artist} shape="circle" />
+        <div className="song-head-text">
           <h2 className="song-title">{song.title}</h2>
           <p className="song-artist">{song.artist}</p>
         </div>
@@ -46,8 +68,13 @@ export function SongCard({ song, onAgain }: { song: Song; onAgain: () => void })
       {album && (
         <div className="desc-block">
           <h3>{song.albumType === "ep" ? "EP" : "Album"}</h3>
-          <p className="album-name">{album}</p>
-          {song.albumDescription && <p>{song.albumDescription}</p>}
+          <div className="album-row">
+            <Thumb url={song.albumImageUrl} label={song.albumName ?? "?"} shape="square" />
+            <div>
+              <p className="album-name">{album}</p>
+              {song.albumDescription && <p>{song.albumDescription}</p>}
+            </div>
+          </div>
         </div>
       )}
 

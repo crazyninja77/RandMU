@@ -17,6 +17,8 @@ interface SongRow {
   year: number | null;
   spotify_track_id: string | null;
   spotify_url: string | null;
+  artist_image_url: string | null;
+  album_image_url: string | null;
 }
 
 function rowToSong(row: SongRow): Song {
@@ -36,6 +38,8 @@ function rowToSong(row: SongRow): Song {
     year: row.year,
     spotifyTrackId: row.spotify_track_id,
     spotifyUrl: row.spotify_url,
+    artistImageUrl: row.artist_image_url,
+    albumImageUrl: row.album_image_url,
   };
 }
 

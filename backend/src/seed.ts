@@ -12,12 +12,12 @@ const insert = db.prepare(`
     id, title, artist, artist_description, song_description,
     country, language, genre, subgenre,
     album_name, album_type, album_description, year,
-    spotify_track_id, spotify_url
+    spotify_track_id, spotify_url, artist_image_url, album_image_url
   ) VALUES (
     @id, @title, @artist, @artistDescription, @songDescription,
     @country, @language, @genre, @subgenre,
     @albumName, @albumType, @albumDescription, @year,
-    @spotifyTrackId, @spotifyUrl
+    @spotifyTrackId, @spotifyUrl, @artistImageUrl, @albumImageUrl
   )
 `);
 
@@ -29,6 +29,9 @@ const insertMany = db.transaction((rows: typeof SEED_SONGS) => {
       spotifyTrackId: null,
       // until a real track id is resolved, link to a Spotify search
       spotifyUrl: spotifySearchUrl(s.artist, s.title),
+      // images are populated by `npm run ingest -- --resolve`
+      artistImageUrl: null,
+      albumImageUrl: null,
     });
   }
 });
