@@ -71,12 +71,6 @@ export function SongCard({ song, onAgain }: { song: Song; onAgain: () => void })
 
       <SpotifyPlayer song={song} />
 
-      <RatingSlider
-        songId={song.id}
-        initialAverage={song.ratingAverage}
-        initialCount={song.ratingCount}
-      />
-
       <div className="desc-block">
         <h3>{t("card.aboutSong")}</h3>
         <Paragraphs text={song.songDescription || "—"} />
@@ -103,6 +97,12 @@ export function SongCard({ song, onAgain }: { song: Song; onAgain: () => void })
       <button className="btn btn-secondary again-btn" onClick={onAgain}>
         {t("card.again", { price: "€0,10" })}
       </button>
+
+      <RatingSlider
+        songId={song.id}
+        initialAverage={song.ratingAverage}
+        initialCount={song.ratingCount}
+      />
     </div>
   );
 }
