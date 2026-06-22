@@ -27,14 +27,23 @@ export interface GeneratedDescriptions {
   albumDescription: string | null;
 }
 
-type Provider = "openai" | "anthropic";
+type Provider = "openai" | "openrouter" | "anthropic";
+
+// OpenRouter keys (sk-or-...) are OpenAI-compatible but hit a different host, so
+// we detect them even when supplied via OPENAI_API_KEY.
+function isOpenRouterKey(key: string | undefined): boolean {
+  return !!key && key.startsWith("sk-or-");
+}
 
 function resolveProvider(): Provider | null {
   const forced = process.env.LLM_PROVIDER?.toLowerCase();
-  if (forced === "openai" && process.env.OPENAI_API_KEY) return "openai";
+  if (forced === "openrouter" && process.env.OPENAI_API_KEY) return "openrouter";
+  if (forced === "openai" && process.env.OPENAI_API_KEY)
+    return isOpenRouterKey(process.env.OPENAI_API_KEY) ? "openrouter" : "openai";
   if (forced === "anthropic" && process.env.ANTHROPIC_API_KEY) return "anthropic";
   if (process.env.ANTHROPIC_API_KEY) return "anthropic";
-  if (process.env.OPENAI_API_KEY) return "openai";
+  if (process.env.OPENAI_API_KEY)
+    return isOpenRouterKey(process.env.OPENAI_API_KEY) ? "openrouter" : "openai";
   return null;
 }
 
@@ -49,10 +58,15 @@ export function llmStatus(): { available: boolean; provider: Provider | null; mo
 
 function modelFor(provider: Provider): string {
   if (process.env.LLM_MODEL) return process.env.LLM_MODEL;
-  return provider === "anthropic" ? "claude-3-5-sonnet-latest" : "gpt-4o";
+  if (provider === "anthropic") return "claude-3-5-sonnet-latest";
+  if (provider === "openrouter") return "openai/gpt-4o";
+  return "gpt-4o";
 }
 
 const TIMEOUT_MS = Number(process.env.LLM_TIMEOUT_MS ?? 30000);
+// Cap output so we don't reserve a model's full completion budget (which some
+// gateways pre-bill against the account balance). ~800 tokens fits 3 blurbs.
+const MAX_TOKENS = Number(process.env.LLM_MAX_TOKENS ?? 800);
 
 const SYSTEM_PROMPT =
   "You are a knowledgeable world-music journalist writing liner notes for RandMU, " +
@@ -121,17 +135,32 @@ function extractJson(text: string): GeneratedDescriptions | null {
   return { songDescription: song, artistDescription: artist, albumDescription: album };
 }
 
-async function callOpenAI(input: DescribeInput, signal: AbortSignal): Promise<GeneratedDescriptions | null> {
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+// OpenAI and OpenRouter share the same chat-completions request shape.
+async function callOpenAICompatible(
+  provider: "openai" | "openrouter",
+  input: DescribeInput,
+  signal: AbortSignal,
+): Promise<GeneratedDescriptions | null> {
+  const url =
+    provider === "openrouter"
+      ? "https://openrouter.ai/api/v1/chat/completions"
+      : "https://api.openai.com/v1/chat/completions";
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+  };
+  if (provider === "openrouter") {
+    headers["HTTP-Referer"] = "https://github.com/crazyninja77/RandMU";
+    headers["X-Title"] = "RandMU";
+  }
+  const res = await fetch(url, {
     method: "POST",
     signal,
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-    },
+    headers,
     body: JSON.stringify({
-      model: modelFor("openai"),
+      model: modelFor(provider),
       temperature: 0.7,
+      max_tokens: MAX_TOKENS,
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: SYSTEM_PROMPT },
@@ -140,7 +169,7 @@ async function callOpenAI(input: DescribeInput, signal: AbortSignal): Promise<Ge
     }),
   });
   if (!res.ok) {
-    console.warn(`[llm] OpenAI ${res.status}: ${(await res.text()).slice(0, 200)}`);
+    console.warn(`[llm] ${provider} ${res.status}: ${(await res.text()).slice(0, 200)}`);
     return null;
   }
   const data = (await res.json()) as { choices?: { message?: { content?: string } }[] };
@@ -159,7 +188,7 @@ async function callAnthropic(input: DescribeInput, signal: AbortSignal): Promise
     },
     body: JSON.stringify({
       model: modelFor("anthropic"),
-      max_tokens: 1024,
+      max_tokens: MAX_TOKENS,
       temperature: 0.7,
       system: SYSTEM_PROMPT,
       messages: [{ role: "user", content: userPrompt(input) }],
@@ -186,7 +215,7 @@ export async function generateDescriptions(input: DescribeInput): Promise<Genera
   try {
     return provider === "anthropic"
       ? await callAnthropic(input, controller.signal)
-      : await callOpenAI(input, controller.signal);
+      : await callOpenAICompatible(provider, input, controller.signal);
   } catch (e) {
     console.warn(`[llm] generation failed: ${(e as Error).message}`);
     return null;
