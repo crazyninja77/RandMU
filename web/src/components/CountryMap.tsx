@@ -60,6 +60,13 @@ function fitFor(target: Feature<Geometry, CountryProps>): {
   return { center, zoom: Math.max(1.4, Math.min(zoom, 16)) };
 }
 
+/** True when the country has a polygon in the 110m dataset (microstates don't). */
+export function hasCountryGeometry(code: string | null): boolean {
+  if (!code) return false;
+  const numeric = ISO2_TO_NUMERIC[code.toUpperCase()];
+  return !!numeric && GEO.features.some((f) => String(f.id) === numeric);
+}
+
 export function CountryMap({
   code,
   country,
