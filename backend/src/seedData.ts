@@ -13,6 +13,7 @@ type SeedSong = Omit<
   | "albumImageUrl"
   | "ratingAverage"
   | "ratingCount"
+  | "descriptionSource"
 >;
 
 export const SEED_SONGS: SeedSong[] = [

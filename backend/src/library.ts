@@ -21,6 +21,7 @@ interface SongRow {
   album_image_url: string | null;
   rating_sum: number;
   rating_count: number;
+  description_source: string;
 }
 
 function rowToSong(row: SongRow): Song {
@@ -44,7 +45,22 @@ function rowToSong(row: SongRow): Song {
     albumImageUrl: row.album_image_url,
     ratingAverage: row.rating_count > 0 ? row.rating_sum / row.rating_count : null,
     ratingCount: row.rating_count,
+    descriptionSource: row.description_source,
   };
+}
+
+export interface SongDescriptions {
+  songDescription: string;
+  artistDescription: string;
+  albumDescription: string | null;
+}
+
+/** Persist model-written descriptions for a song and mark its source as 'llm'. */
+export function setSongDescriptions(id: string, d: SongDescriptions): void {
+  db.prepare(
+    `UPDATE songs SET song_description = ?, artist_description = ?,
+       album_description = ?, description_source = 'llm' WHERE id = ?`,
+  ).run(d.songDescription, d.artistDescription, d.albumDescription, id);
 }
 
 export interface RatingResult {
@@ -103,6 +119,22 @@ export function getSongById(id: string): Song | null {
     | SongRow
     | undefined;
   return row ? rowToSong(row) : null;
+}
+
+/** One song still on templated text, for the background pre-generation worker. */
+export function getNextTemplateSong(): Song | null {
+  const row = db
+    .prepare("SELECT * FROM songs WHERE description_source = 'template' ORDER BY RANDOM() LIMIT 1")
+    .get() as SongRow | undefined;
+  return row ? rowToSong(row) : null;
+}
+
+/** Count of songs by description source, e.g. { curated, template, llm }. */
+export function countBySource(): Record<string, number> {
+  const rows = db
+    .prepare("SELECT description_source AS s, COUNT(*) AS c FROM songs GROUP BY description_source")
+    .all() as { s: string; c: number }[];
+  return Object.fromEntries(rows.map((r) => [r.s, r.c]));
 }
 
 export function getStats() {

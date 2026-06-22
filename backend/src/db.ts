@@ -28,7 +28,9 @@ db.exec(`
     artist_image_url TEXT,
     album_image_url TEXT,
     rating_sum REAL NOT NULL DEFAULT 0,
-    rating_count INTEGER NOT NULL DEFAULT 0
+    rating_count INTEGER NOT NULL DEFAULT 0,
+    -- 'curated' (hand-written seed) | 'template' (metadata-generated) | 'llm' (model-written)
+    description_source TEXT NOT NULL DEFAULT 'template'
   );
 
   CREATE TABLE IF NOT EXISTS payments (
@@ -57,6 +59,10 @@ for (const [col, ddl] of [
   ["album_image_url", "ALTER TABLE songs ADD COLUMN album_image_url TEXT"],
   ["rating_sum", "ALTER TABLE songs ADD COLUMN rating_sum REAL NOT NULL DEFAULT 0"],
   ["rating_count", "ALTER TABLE songs ADD COLUMN rating_count INTEGER NOT NULL DEFAULT 0"],
+  [
+    "description_source",
+    "ALTER TABLE songs ADD COLUMN description_source TEXT NOT NULL DEFAULT 'template'",
+  ],
 ] as const) {
   if (!songCols.has(col)) db.exec(ddl);
 }

@@ -208,6 +208,51 @@ So: **seed songs = curated human prose; catalogue songs = templated prose filled
 from authoritative metadata.** Both end up in the same `songs` table with the
 same shape, so the UI renders them identically.
 
+### (c) On‑reveal LLM upgrade (unique, story‑driven liner notes)
+The templated prose in (b) is true but repetitive across songs of the same
+genre/country. So when a catalogue song is **revealed for the first time**, the
+backend asks an LLM to rewrite its descriptions into unique, niche‑fact‑rich
+liner notes — what the track sounds like, where it sits in the artist's career,
+why it matters — and **caches the result** so each song is generated at most once.
+
+- Trigger: `GET /api/recommendation/:paymentId` calls `ensureSongDescribed()`
+  (`backend/src/descriptions.ts`), which only generates for songs whose
+  `description_source` is still `template` (seeds stay `curated`, already‑generated
+  songs stay `llm`). The frontend fetches this during the "drawing your song"
+  spinner, so the ~2–4s generation is hidden.
+- Model: `backend/src/llm.ts` is provider‑agnostic with a fallback chain:
+  - **Remote** — auto‑detects the key (`ANTHROPIC_API_KEY` → Claude;
+    `OPENAI_API_KEY` → OpenAI, or OpenRouter when the key is `sk-or-…`). On
+    OpenRouter it defaults to a list of **free** models tried in order, falling
+    through on per‑model 429s. Overridable via `LLM_PROVIDER` / `LLM_MODEL`.
+  - **Local (Ollama)** — if a model is running on the box (`OLLAMA_HOST`,
+    default `qwen2.5:3b-instruct`) it is used as a last resort when every remote
+    model fails, or first when `preferLocal` is set. This makes generation work
+    with **no API key and no rate limits at all**.
+  - With neither configured, generation is skipped and the templated text from
+    (b) is served unchanged.
+- **Fact grounding (RAG)** — before generating, `backend/src/grounding.ts`
+  fetches genuinely true facts about the artist/song from free, credential‑less
+  sources (**Wikipedia** summary + **MusicBrainz** artist record), with a
+  relevance guard that rejects wrong‑topic hits (e.g. an award page). These facts
+  are injected into the prompt; the model must ground specific claims in them and
+  otherwise speak about genre/region/era. This sharply improves accuracy and
+  surfaces real niche facts even on weak free models.
+- **Verification pass** — generated prose is scanned for precise years not backed
+  by the metadata or grounded facts; offending sentences are dropped (the most
+  common fabrication on small models). If too little survives, the generation is
+  treated as failed and retried later.
+- **Background pre‑generation** (`backend/src/worker.ts`) — on startup the server
+  launches a gentle worker that walks the catalogue and pre‑generates descriptions
+  (local‑first for throughput, with backoff), so reveals become **instant** and
+  users almost never wait on a live call. Disable with `DESCRIPTION_WORKER=off`.
+- **Durable overlay** (`backend/src/descriptionStore.ts`) — every generated
+  description is appended to a committed `backend/data/descriptions.ndjson`, keyed
+  by Spotify track id. `seed.ts` re‑applies it when rebuilding the DB, so a song
+  is generated **once ever** — surviving restarts, redeploys and fresh clones.
+- `description_source` (column on `songs`) records which path produced the prose:
+  `curated` | `template` | `llm`.
+
 ---
 
 ## 5. Data model

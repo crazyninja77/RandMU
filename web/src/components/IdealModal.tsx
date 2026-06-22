@@ -24,7 +24,7 @@ export function IdealModal({
   onCancel,
 }: {
   payment: Payment;
-  onPaid: (song: Song | null) => void;
+  onPaid: (paymentId: string, song: Song | null) => void;
   onCancel: () => void;
 }) {
   const { t } = useI18n();
@@ -41,7 +41,7 @@ export function IdealModal({
       // Simulate the redirect + bank approval round-trip.
       await new Promise((r) => setTimeout(r, 1200));
       const { song } = await api.confirmPayment(payment.id);
-      onPaid(song);
+      onPaid(payment.id, song);
     } catch (e) {
       setError((e as Error).message);
       setPhase("select");

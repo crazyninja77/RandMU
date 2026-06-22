@@ -52,14 +52,22 @@ export default function App() {
     }
   }
 
-  function onPaid(song: Song | null) {
+  async function onPaid(paymentId: string, song: Song | null) {
     if (!song) {
       setError(t("error.nosong"));
       setView({ kind: "idle" });
       return;
     }
+    // Show the "drawing your song" spinner while the backend writes (and caches)
+    // this song's unique liner notes. Fall back to the song from the payment
+    // confirmation if that request fails.
     setView({ kind: "revealing" });
-    setTimeout(() => setView({ kind: "result", song }), 600);
+    try {
+      const { song: described } = await api.recommendation(paymentId);
+      setView({ kind: "result", song: described });
+    } catch {
+      setView({ kind: "result", song });
+    }
   }
 
   return (

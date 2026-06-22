@@ -28,6 +28,8 @@ export const api = {
     }),
   failPayment: (id: string) =>
     req<{ payment: Payment }>(`/api/payments/${id}/fail`, { method: "POST" }),
+  recommendation: (paymentId: string) =>
+    req<{ song: Song }>(`/api/recommendation/${paymentId}`),
   rateSong: (id: string, value: number) =>
     req<{ average: number; count: number }>(`/api/songs/${id}/rate`, {
       method: "POST",
