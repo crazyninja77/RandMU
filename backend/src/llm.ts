@@ -82,8 +82,10 @@ function modelFor(provider: Provider): string {
 // reveal UI shows a "drawing your song" spinner during it.
 const TIMEOUT_MS = Number(process.env.LLM_TIMEOUT_MS ?? 60000);
 // Cap output so we don't reserve a model's full completion budget (which some
-// gateways pre-bill against the account balance). ~1000 tokens fits 3 blurbs.
-const MAX_TOKENS = Number(process.env.LLM_MAX_TOKENS ?? 1000);
+// gateways pre-bill against the account balance). 1500 comfortably fits 3
+// blurbs plus any reasoning preamble free models emit, so the JSON isn't
+// truncated mid-object (which would make it unparseable and waste the call).
+const MAX_TOKENS = Number(process.env.LLM_MAX_TOKENS ?? 1500);
 
 const SYSTEM_PROMPT =
   "You are a knowledgeable world-music journalist writing liner notes for RandMU, " +
