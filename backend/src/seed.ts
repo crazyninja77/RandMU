@@ -14,12 +14,14 @@ const insert = db.prepare(`
     id, title, artist, artist_description, song_description,
     country, language, genre, subgenre,
     album_name, album_type, album_description, year,
-    spotify_track_id, spotify_url, artist_image_url, album_image_url
+    spotify_track_id, spotify_url, artist_image_url, album_image_url,
+    description_source
   ) VALUES (
     @id, @title, @artist, @artistDescription, @songDescription,
     @country, @language, @genre, @subgenre,
     @albumName, @albumType, @albumDescription, @year,
-    @spotifyTrackId, @spotifyUrl, @artistImageUrl, @albumImageUrl
+    @spotifyTrackId, @spotifyUrl, @artistImageUrl, @albumImageUrl,
+    'curated'
   )
 `);
 
@@ -45,12 +47,14 @@ const catalogInsert = db.prepare(`
     id, title, artist, artist_description, song_description,
     country, language, genre, subgenre,
     album_name, album_type, album_description, year,
-    spotify_track_id, spotify_url, artist_image_url, album_image_url
+    spotify_track_id, spotify_url, artist_image_url, album_image_url,
+    description_source
   ) VALUES (
     @id, @title, @artist, @artistDescription, @songDescription,
     @country, @language, @genre, @subgenre,
     @albumName, @albumType, @albumDescription, @year,
-    @spotifyTrackId, @spotifyUrl, @artistImageUrl, @albumImageUrl
+    @spotifyTrackId, @spotifyUrl, @artistImageUrl, @albumImageUrl,
+    'template'
   )
   ON CONFLICT(spotify_track_id) DO NOTHING
 `);

@@ -1,6 +1,8 @@
 import express from "express";
 import cors from "cors";
 import { getStats, rateSong, getSongById } from "./library.js";
+import { ensureSongDescribed } from "./descriptions.js";
+import { llmStatus } from "./llm.js";
 import {
   PRICE_CENTS,
   createPayment,
@@ -63,16 +65,24 @@ app.post("/api/songs/:id/rate", (req, res) => {
   res.json(result);
 });
 
-app.get("/api/recommendation/:paymentId", (req, res) => {
+app.get("/api/recommendation/:paymentId", async (req, res) => {
   const song = getPaymentSong(req.params.paymentId);
   if (!song) return res.status(402).json({ error: "payment_required" });
-  res.json({ song });
+  // Generate + cache unique liner notes for this song on first reveal.
+  const described = await ensureSongDescribed(song);
+  res.json({ song: described });
 });
 
 const PORT = Number(process.env.PORT ?? 4000);
 app.listen(PORT, () => {
   const stats = getStats();
   console.log(`RandMU backend on http://localhost:${PORT}`);
+  const llm = llmStatus();
+  console.log(
+    llm.available
+      ? `LLM descriptions: ${llm.provider} (${llm.model})`
+      : "LLM descriptions: disabled (no API key) — using templated text",
+  );
   console.log(
     `Library: ${stats.total} songs · ${stats.countries} countries · ${stats.genres} genres · ${stats.languages} languages`,
   );

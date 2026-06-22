@@ -208,6 +208,29 @@ So: **seed songs = curated human prose; catalogue songs = templated prose filled
 from authoritative metadata.** Both end up in the same `songs` table with the
 same shape, so the UI renders them identically.
 
+### (c) On‑reveal LLM upgrade (unique, story‑driven liner notes)
+The templated prose in (b) is true but repetitive across songs of the same
+genre/country. So when a catalogue song is **revealed for the first time**, the
+backend asks an LLM to rewrite its descriptions into unique, niche‑fact‑rich
+liner notes — what the track sounds like, where it sits in the artist's career,
+why it matters — and **caches the result** so each song is generated at most once.
+
+- Trigger: `GET /api/recommendation/:paymentId` calls `ensureSongDescribed()`
+  (`backend/src/descriptions.ts`), which only generates for songs whose
+  `description_source` is still `template` (seeds stay `curated`, already‑generated
+  songs stay `llm`). The frontend fetches this during the "drawing your song"
+  spinner, so the ~2–4s generation is hidden.
+- Model: `backend/src/llm.ts` is provider‑agnostic. It auto‑detects the key
+  (`ANTHROPIC_API_KEY` → Claude, else `OPENAI_API_KEY` → GPT‑4o), overridable via
+  `LLM_PROVIDER` / `LLM_MODEL`. With **no key set, generation is skipped** and the
+  templated text from (b) is served unchanged.
+- Accuracy guardrail: the prompt forbids inventing specific facts (dates, awards,
+  collaborators) for artists the model doesn't recognise — in that case it writes
+  truthfully about the genre, region, language and era instead. Any failure or
+  timeout falls back to the existing text and retries on the next reveal.
+- `description_source` (column on `songs`) records which path produced the prose:
+  `curated` | `template` | `llm`.
+
 ---
 
 ## 5. Data model

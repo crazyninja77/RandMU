@@ -21,6 +21,7 @@ interface SongRow {
   album_image_url: string | null;
   rating_sum: number;
   rating_count: number;
+  description_source: string;
 }
 
 function rowToSong(row: SongRow): Song {
@@ -44,7 +45,22 @@ function rowToSong(row: SongRow): Song {
     albumImageUrl: row.album_image_url,
     ratingAverage: row.rating_count > 0 ? row.rating_sum / row.rating_count : null,
     ratingCount: row.rating_count,
+    descriptionSource: row.description_source,
   };
+}
+
+export interface SongDescriptions {
+  songDescription: string;
+  artistDescription: string;
+  albumDescription: string | null;
+}
+
+/** Persist model-written descriptions for a song and mark its source as 'llm'. */
+export function setSongDescriptions(id: string, d: SongDescriptions): void {
+  db.prepare(
+    `UPDATE songs SET song_description = ?, artist_description = ?,
+       album_description = ?, description_source = 'llm' WHERE id = ?`,
+  ).run(d.songDescription, d.artistDescription, d.albumDescription, id);
 }
 
 export interface RatingResult {

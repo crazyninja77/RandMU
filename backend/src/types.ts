@@ -21,6 +21,8 @@ export interface Song {
   /** community average on a 0–10 scale, null when nobody has rated yet */
   ratingAverage: number | null;
   ratingCount: number;
+  /** how the descriptions were produced: 'curated' | 'template' | 'llm' */
+  descriptionSource: string;
 }
 
 export type PaymentStatus = "pending" | "paid" | "expired" | "failed";
