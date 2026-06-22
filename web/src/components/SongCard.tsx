@@ -70,13 +70,6 @@ export function SongCard({ song, onAgain }: { song: Song; onAgain: () => void })
         {song.year && <span className="tag tag-year">{song.year}</span>}
       </div>
 
-      {song.countryCode && song.country && (
-        <div className="desc-block">
-          <h3>{t("card.origin", { country: song.country })}</h3>
-          <CountryMap code={song.countryCode} country={song.country} />
-        </div>
-      )}
-
       <SpotifyPlayer song={song} />
 
       <div className="desc-block">
@@ -102,15 +95,22 @@ export function SongCard({ song, onAgain }: { song: Song; onAgain: () => void })
         </div>
       )}
 
-      <button className="btn btn-secondary again-btn" onClick={onAgain}>
-        {t("card.again", { price: "€0,10" })}
-      </button>
+      {song.countryCode && song.country && (
+        <div className="desc-block">
+          <h3>{t("card.origin", { country: song.country })}</h3>
+          <CountryMap code={song.countryCode} country={song.country} />
+        </div>
+      )}
 
       <RatingSlider
         songId={song.id}
         initialAverage={song.ratingAverage}
         initialCount={song.ratingCount}
       />
+
+      <button className="btn btn-secondary again-btn" onClick={onAgain}>
+        {t("card.again", { price: "€0,10" })}
+      </button>
     </div>
   );
 }
