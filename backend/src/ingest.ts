@@ -58,7 +58,8 @@ async function getToken(): Promise<string> {
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // Minimum gap between requests so we don't hammer the API into a long ban.
-const MIN_GAP_MS = 150;
+// Tunable via SPOTIFY_MIN_GAP_MS; defaults to a conservative 250ms (~4 req/s).
+const MIN_GAP_MS = Number(process.env.SPOTIFY_MIN_GAP_MS ?? 250);
 // If Spotify hands back a retry-after longer than this, abort instead of
 // sleeping (a dev-mode app can get banned for ~24h).
 const MAX_RETRY_AFTER_S = 60;
@@ -382,9 +383,32 @@ async function buildCatalogSong(t: SpotifyTrack, cand: Candidate): Promise<Catal
   };
 }
 
+/**
+ * Round-robin candidates across countries so that any partial resolve (e.g. one
+ * that stops early on a rate-limit) still spans the full diversity of the pool
+ * instead of exhausting the first few countries. Within each country, candidates
+ * that already carry a song title are tried first (higher match rate).
+ */
+function interleaveByCountry(candidates: Candidate[]): Candidate[] {
+  const groups = new Map<string, Candidate[]>();
+  for (const c of candidates) {
+    const key = c.countryCode || c.country || "??";
+    (groups.get(key) ?? groups.set(key, []).get(key)!).push(c);
+  }
+  for (const list of groups.values()) {
+    list.sort((a, b) => (b.title ? 1 : 0) - (a.title ? 1 : 0));
+  }
+  const buckets = [...groups.values()];
+  const out: Candidate[] = [];
+  for (let i = 0; out.length < candidates.length; i++) {
+    for (const bucket of buckets) if (i < bucket.length) out.push(bucket[i]);
+  }
+  return out;
+}
+
 /** Resolve the harvested candidate pool into playable songs + persist catalog. */
 async function resolveCandidates(target: number, tracksPerArtist: number) {
-  const candidates = readCandidates();
+  const candidates = interleaveByCountry(readCandidates());
   if (!candidates.length) {
     console.log("No candidates found. Run `npm run harvest` first.");
     return;
@@ -397,12 +421,32 @@ async function resolveCandidates(target: number, tracksPerArtist: number) {
   for (const s of bySpotify.values()) upsert.run(s);
   const startCount = bySpotify.size;
 
+  // Track which candidates are already covered so a resumed run never spends its
+  // scarce request budget re-searching artists/titles we have already resolved.
+  const resolvedArtists = new Set<string>();
+  const resolvedArtistTitle = new Set<string>();
+  const markResolved = (s: CatalogSong) => {
+    const a = normName(s.artist.split(",")[0] ?? "");
+    resolvedArtists.add(a);
+    resolvedArtistTitle.add(`${a}|${normName(s.title)}`);
+  };
+  for (const s of bySpotify.values()) markResolved(s);
+
   let processed = 0;
   let added = 0;
+  let skipped = 0;
   const flush = () => writeCatalog([...bySpotify.values()]);
   try {
     for (const cand of candidates) {
       if (target && bySpotify.size >= target) break;
+      const a = normName(cand.artist);
+      const covered = cand.title
+        ? resolvedArtistTitle.has(`${a}|${normName(cand.title)}`)
+        : resolvedArtists.has(a);
+      if (covered) {
+        skipped++;
+        continue;
+      }
       processed++;
       let tracks: SpotifyTrack[] = [];
       try {
@@ -415,6 +459,7 @@ async function resolveCandidates(target: number, tracksPerArtist: number) {
         if (!t.id || bySpotify.has(t.id)) continue;
         const row = await buildCatalogSong(t, cand);
         bySpotify.set(t.id, row);
+        markResolved(row);
         upsert.run(row);
         added++;
       }
@@ -427,7 +472,8 @@ async function resolveCandidates(target: number, tracksPerArtist: number) {
     flush();
   }
   console.log(
-    `Resolve done. Added ${added} (was ${startCount}); catalog now ${bySpotify.size} songs.`,
+    `Resolve done. Added ${added} (was ${startCount}, skipped ${skipped} already-covered); ` +
+      `catalog now ${bySpotify.size} songs.`,
   );
 }
 
