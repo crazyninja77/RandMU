@@ -56,17 +56,34 @@ export function llmStatus(): { available: boolean; provider: Provider | null; mo
   return { available: provider !== null, provider, model: provider ? modelFor(provider) : null };
 }
 
-function modelFor(provider: Provider): string {
-  if (process.env.LLM_MODEL) return process.env.LLM_MODEL;
-  if (provider === "anthropic") return "claude-3-5-sonnet-latest";
-  if (provider === "openrouter") return "openai/gpt-4o";
-  return "gpt-4o";
+// Default free OpenRouter models, tried in order. Free models are individually
+// rate-limited upstream, so we fall through to the next one on a 429.
+const OPENROUTER_FREE_MODELS = [
+  "openai/gpt-oss-120b:free",
+  "nvidia/nemotron-3-super-120b-a12b:free",
+  "qwen/qwen3-next-80b-a3b-instruct:free",
+  "meta-llama/llama-3.3-70b-instruct:free",
+];
+
+function modelsFor(provider: Provider): string[] {
+  if (process.env.LLM_MODEL) {
+    return process.env.LLM_MODEL.split(",").map((m) => m.trim()).filter(Boolean);
+  }
+  if (provider === "anthropic") return ["claude-3-5-sonnet-latest"];
+  if (provider === "openrouter") return OPENROUTER_FREE_MODELS;
+  return ["gpt-4o"];
 }
 
-const TIMEOUT_MS = Number(process.env.LLM_TIMEOUT_MS ?? 30000);
+function modelFor(provider: Provider): string {
+  return modelsFor(provider)[0];
+}
+
+// Free models are slow (often 20-30s) so allow a generous overall budget; the
+// reveal UI shows a "drawing your song" spinner during it.
+const TIMEOUT_MS = Number(process.env.LLM_TIMEOUT_MS ?? 60000);
 // Cap output so we don't reserve a model's full completion budget (which some
-// gateways pre-bill against the account balance). ~800 tokens fits 3 blurbs.
-const MAX_TOKENS = Number(process.env.LLM_MAX_TOKENS ?? 800);
+// gateways pre-bill against the account balance). ~1000 tokens fits 3 blurbs.
+const MAX_TOKENS = Number(process.env.LLM_MAX_TOKENS ?? 1000);
 
 const SYSTEM_PROMPT =
   "You are a knowledgeable world-music journalist writing liner notes for RandMU, " +
@@ -153,28 +170,34 @@ async function callOpenAICompatible(
     headers["HTTP-Referer"] = "https://github.com/crazyninja77/RandMU";
     headers["X-Title"] = "RandMU";
   }
-  const res = await fetch(url, {
-    method: "POST",
-    signal,
-    headers,
-    body: JSON.stringify({
-      model: modelFor(provider),
-      temperature: 0.7,
-      max_tokens: MAX_TOKENS,
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: SYSTEM_PROMPT },
-        { role: "user", content: userPrompt(input) },
-      ],
-    }),
-  });
-  if (!res.ok) {
-    console.warn(`[llm] ${provider} ${res.status}: ${(await res.text()).slice(0, 200)}`);
-    return null;
+  // Try each configured model in turn; free models are often rate-limited (429)
+  // individually, so falling through keeps generation reliable.
+  for (const model of modelsFor(provider)) {
+    const res = await fetch(url, {
+      method: "POST",
+      signal,
+      headers,
+      body: JSON.stringify({
+        model,
+        temperature: 0.7,
+        max_tokens: MAX_TOKENS,
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: SYSTEM_PROMPT },
+          { role: "user", content: userPrompt(input) },
+        ],
+      }),
+    });
+    if (!res.ok) {
+      console.warn(`[llm] ${provider}/${model} ${res.status}: ${(await res.text()).slice(0, 160)}`);
+      continue;
+    }
+    const data = (await res.json()) as { choices?: { message?: { content?: string } }[] };
+    const parsed = extractJson(data.choices?.[0]?.message?.content ?? "");
+    if (parsed) return parsed;
+    console.warn(`[llm] ${provider}/${model}: response was not valid JSON, trying next`);
   }
-  const data = (await res.json()) as { choices?: { message?: { content?: string } }[] };
-  const content = data.choices?.[0]?.message?.content;
-  return content ? extractJson(content) : null;
+  return null;
 }
 
 async function callAnthropic(input: DescribeInput, signal: AbortSignal): Promise<GeneratedDescriptions | null> {
