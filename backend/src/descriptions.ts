@@ -43,8 +43,10 @@ export async function describeSong(song: Song, opts: GenerateOptions = {}): Prom
   setSongDescriptions(song.id, generated);
   recordDescription({
     key: descriptionKey({ spotifyTrackId: song.spotifyTrackId, artist: song.artist, title: song.title }),
-    ...generated,
-    model: llmStatus().model ?? "unknown",
+    songDescription: generated.songDescription,
+    artistDescription: generated.artistDescription,
+    albumDescription: generated.albumDescription,
+    model: generated.model ?? llmStatus().model ?? "unknown",
     generatedAt: new Date().toISOString(),
   });
   return getSongById(song.id) ?? { ...song, ...generated, descriptionSource: "llm" };

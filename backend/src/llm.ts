@@ -25,6 +25,8 @@ export interface GeneratedDescriptions {
   songDescription: string;
   artistDescription: string;
   albumDescription: string | null;
+  /** Which model actually produced this (for the overlay/audit). */
+  model?: string;
 }
 
 /** Researched facts to ground the model in (see grounding.ts). */
@@ -242,7 +244,7 @@ async function callOpenAICompatible(
     }
     const data = (await res.json()) as { choices?: { message?: { content?: string } }[] };
     const parsed = extractJson(data.choices?.[0]?.message?.content ?? "");
-    if (parsed) return parsed;
+    if (parsed) return { ...parsed, model: `${provider}/${model}` };
     console.warn(`[llm] ${provider}/${model}: response was not valid JSON, trying next`);
   }
   return null;
@@ -274,7 +276,8 @@ async function callOllama(
     return null;
   }
   const data = (await res.json()) as { choices?: { message?: { content?: string } }[] };
-  return extractJson(data.choices?.[0]?.message?.content ?? "");
+  const parsed = extractJson(data.choices?.[0]?.message?.content ?? "");
+  return parsed ? { ...parsed, model: `ollama:${OLLAMA_MODEL}` } : null;
 }
 
 async function callAnthropic(
@@ -304,7 +307,8 @@ async function callAnthropic(
   }
   const data = (await res.json()) as { content?: { type: string; text?: string }[] };
   const content = data.content?.find((b) => b.type === "text")?.text;
-  return content ? extractJson(content) : null;
+  const parsed = content ? extractJson(content) : null;
+  return parsed ? { ...parsed, model: modelFor("anthropic") } : null;
 }
 
 // --- Verification pass ------------------------------------------------------
@@ -339,7 +343,7 @@ function verify(
   const albumDescription = gen.albumDescription
     ? stripUnsupportedYears(gen.albumDescription, allowed) || null
     : null;
-  return { songDescription, artistDescription, albumDescription };
+  return { songDescription, artistDescription, albumDescription, model: gen.model };
 }
 
 /**
