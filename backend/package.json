@@ -10,6 +10,8 @@
     "seed": "tsx src/seed.ts",
     "harvest": "tsx src/harvest.ts",
     "ingest": "tsx src/ingest.ts",
+    "ingest:playlists": "tsx src/ingest.ts --from-playlists",
+    "ingest:musicbrainz": "tsx src/ingest.ts --from-musicbrainz",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
