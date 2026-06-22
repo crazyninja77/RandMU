@@ -121,6 +121,22 @@ export function getSongById(id: string): Song | null {
   return row ? rowToSong(row) : null;
 }
 
+/** One song still on templated text, for the background pre-generation worker. */
+export function getNextTemplateSong(): Song | null {
+  const row = db
+    .prepare("SELECT * FROM songs WHERE description_source = 'template' ORDER BY RANDOM() LIMIT 1")
+    .get() as SongRow | undefined;
+  return row ? rowToSong(row) : null;
+}
+
+/** Count of songs by description source, e.g. { curated, template, llm }. */
+export function countBySource(): Record<string, number> {
+  const rows = db
+    .prepare("SELECT description_source AS s, COUNT(*) AS c FROM songs GROUP BY description_source")
+    .all() as { s: string; c: number }[];
+  return Object.fromEntries(rows.map((r) => [r.s, r.c]));
+}
+
 export function getStats() {
   const total = (db.prepare("SELECT COUNT(*) AS c FROM songs").get() as { c: number }).c;
   const countries = (

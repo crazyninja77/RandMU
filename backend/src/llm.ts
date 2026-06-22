@@ -27,6 +27,12 @@ export interface GeneratedDescriptions {
   albumDescription: string | null;
 }
 
+/** Researched facts to ground the model in (see grounding.ts). */
+export interface Grounding {
+  text: string;
+  years: number[];
+}
+
 type Provider = "openai" | "openrouter" | "anthropic";
 
 // OpenRouter keys (sk-or-...) are OpenAI-compatible but hit a different host, so
@@ -47,13 +53,40 @@ function resolveProvider(): Provider | null {
   return null;
 }
 
+// --- Local model (Ollama) fallback -----------------------------------------
+// A small model running on the box generates descriptions for free, with no API
+// key and no rate limits. It is used as a last resort when no remote provider is
+// configured or when every remote (free) model fails. Probed once at startup.
+const OLLAMA_HOST = (process.env.OLLAMA_HOST ?? "http://localhost:11434").replace(/\/$/, "");
+const OLLAMA_MODEL = process.env.OLLAMA_MODEL ?? "qwen2.5:3b-instruct";
+let ollamaReady = false;
+
+export async function initLlm(): Promise<void> {
+  if (process.env.OLLAMA_DISABLED === "1") return;
+  try {
+    const res = await fetch(`${OLLAMA_HOST}/api/tags`, { signal: AbortSignal.timeout(2500) });
+    if (!res.ok) return;
+    const data = (await res.json()) as { models?: { name: string }[] };
+    ollamaReady = Array.isArray(data.models) && data.models.length > 0;
+    if (ollamaReady) console.log(`[llm] local Ollama available at ${OLLAMA_HOST} (${OLLAMA_MODEL})`);
+  } catch {
+    ollamaReady = false;
+  }
+}
+
+export function ollamaAvailable(): boolean {
+  return ollamaReady;
+}
+
 export function llmAvailable(): boolean {
-  return resolveProvider() !== null;
+  return resolveProvider() !== null || ollamaReady;
 }
 
 export function llmStatus(): { available: boolean; provider: Provider | null; model: string | null } {
   const provider = resolveProvider();
-  return { available: provider !== null, provider, model: provider ? modelFor(provider) : null };
+  if (provider) return { available: true, provider, model: modelFor(provider) };
+  if (ollamaReady) return { available: true, provider: null, model: `ollama:${OLLAMA_MODEL}` };
+  return { available: false, provider: null, model: null };
 }
 
 // Default free OpenRouter models, tried in order. Free models are individually
@@ -78,9 +111,11 @@ function modelFor(provider: Provider): string {
   return modelsFor(provider)[0];
 }
 
-// Free models are slow (often 20-30s) so allow a generous overall budget; the
-// reveal UI shows a "drawing your song" spinner during it.
+// Free models are slow (often 20-30s) so allow a generous budget; the reveal UI
+// shows a "drawing your song" spinner during it. The local Ollama fallback gets
+// its own (separate) budget so a remote timeout can't abort it.
 const TIMEOUT_MS = Number(process.env.LLM_TIMEOUT_MS ?? 60000);
+const OLLAMA_TIMEOUT_MS = Number(process.env.OLLAMA_TIMEOUT_MS ?? 60000);
 // Cap output so we don't reserve a model's full completion budget (which some
 // gateways pre-bill against the account balance). 1500 comfortably fits 3
 // blurbs plus any reasoning preamble free models emit, so the JSON isn't
@@ -92,7 +127,7 @@ const SYSTEM_PROMPT =
   "a discovery app that surfaces diverse, largely non-Western music. You write vivid, " +
   "specific, factually careful prose.";
 
-function userPrompt(i: DescribeInput): string {
+function userPrompt(i: DescribeInput, grounding?: Grounding | null): string {
   const meta = {
     title: i.title,
     artist: i.artist,
@@ -104,12 +139,22 @@ function userPrompt(i: DescribeInput): string {
     albumType: i.albumType,
     year: i.year,
   };
+  const facts = grounding?.text
+    ? [
+        "",
+        "Verified facts (researched from Wikipedia/MusicBrainz). Use ONLY these for any",
+        "specific claim (dates, origin, career stage, collaborators). Do NOT contradict",
+        "them and do NOT introduce other specific facts beyond them or the metadata:",
+        grounding.text,
+      ]
+    : [];
   return [
     "Write liner notes for this specific track. Return ONLY a JSON object with keys",
     '"songDescription", "artistDescription", and "albumDescription".',
     "",
     "Track metadata:",
     JSON.stringify(meta, null, 2),
+    ...facts,
     "",
     "Requirements:",
     "- songDescription (2 short paragraphs, ~70-120 words total): what the track sounds like",
@@ -158,6 +203,7 @@ function extractJson(text: string): GeneratedDescriptions | null {
 async function callOpenAICompatible(
   provider: "openai" | "openrouter",
   input: DescribeInput,
+  grounding: Grounding | null,
   signal: AbortSignal,
 ): Promise<GeneratedDescriptions | null> {
   const url =
@@ -186,7 +232,7 @@ async function callOpenAICompatible(
         response_format: { type: "json_object" },
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: userPrompt(input) },
+          { role: "user", content: userPrompt(input, grounding) },
         ],
       }),
     });
@@ -202,7 +248,40 @@ async function callOpenAICompatible(
   return null;
 }
 
-async function callAnthropic(input: DescribeInput, signal: AbortSignal): Promise<GeneratedDescriptions | null> {
+// Local Ollama exposes an OpenAI-compatible endpoint at /v1/chat/completions.
+async function callOllama(
+  input: DescribeInput,
+  grounding: Grounding | null,
+  signal: AbortSignal,
+): Promise<GeneratedDescriptions | null> {
+  const res = await fetch(`${OLLAMA_HOST}/v1/chat/completions`, {
+    method: "POST",
+    signal,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: OLLAMA_MODEL,
+      temperature: 0.7,
+      max_tokens: MAX_TOKENS,
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: SYSTEM_PROMPT },
+        { role: "user", content: userPrompt(input, grounding) },
+      ],
+    }),
+  });
+  if (!res.ok) {
+    console.warn(`[llm] ollama ${res.status}: ${(await res.text()).slice(0, 160)}`);
+    return null;
+  }
+  const data = (await res.json()) as { choices?: { message?: { content?: string } }[] };
+  return extractJson(data.choices?.[0]?.message?.content ?? "");
+}
+
+async function callAnthropic(
+  input: DescribeInput,
+  grounding: Grounding | null,
+  signal: AbortSignal,
+): Promise<GeneratedDescriptions | null> {
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     signal,
@@ -216,7 +295,7 @@ async function callAnthropic(input: DescribeInput, signal: AbortSignal): Promise
       max_tokens: MAX_TOKENS,
       temperature: 0.7,
       system: SYSTEM_PROMPT,
-      messages: [{ role: "user", content: userPrompt(input) }],
+      messages: [{ role: "user", content: userPrompt(input, grounding) }],
     }),
   });
   if (!res.ok) {
@@ -228,23 +307,99 @@ async function callAnthropic(input: DescribeInput, signal: AbortSignal): Promise
   return content ? extractJson(content) : null;
 }
 
+// --- Verification pass ------------------------------------------------------
+// Weak models occasionally invent precise dates. We drop any sentence asserting
+// a specific year that isn't backed by the song's metadata or the grounded
+// facts. Decade references (e.g. "1970s") are left untouched.
+function stripUnsupportedYears(text: string, allowed: Set<number>): string {
+  const sentences = text.split(/(?<=[.!?])\s+/);
+  const kept = sentences.filter((s) => {
+    const ys = [...s.matchAll(/\b(1[89]\d{2}|20\d{2})\b(?!s)/g)].map((m) => Number(m[1]));
+    return ys.every((y) => allowed.has(y));
+  });
+  return kept.join(" ").trim();
+}
+
+function wordCount(s: string): number {
+  return s.trim().split(/\s+/).filter(Boolean).length;
+}
+
+function verify(
+  gen: GeneratedDescriptions,
+  input: DescribeInput,
+  grounding: Grounding | null,
+): GeneratedDescriptions | null {
+  const allowed = new Set<number>(grounding?.years ?? []);
+  if (input.year) allowed.add(input.year);
+  const songDescription = stripUnsupportedYears(gen.songDescription, allowed);
+  const artistDescription = stripUnsupportedYears(gen.artistDescription, allowed);
+  // If stripping gutted the prose, treat as a failed generation (caller falls
+  // back to template; the background worker will retry later).
+  if (wordCount(songDescription) < 30 || wordCount(artistDescription) < 25) return null;
+  const albumDescription = gen.albumDescription
+    ? stripUnsupportedYears(gen.albumDescription, allowed) || null
+    : null;
+  return { songDescription, artistDescription, albumDescription };
+}
+
 /**
- * Generate descriptions for a song. Returns null on any failure (missing key,
- * timeout, bad response) so callers can fall back to the existing text.
+ * Generate descriptions for a song. Tries the configured remote provider first
+ * (free models, with fall-through), then the local Ollama model as a last
+ * resort. Output is grounded in researched facts and run through a verification
+ * pass. Returns null on any failure so callers can fall back to existing text.
  */
-export async function generateDescriptions(input: DescribeInput): Promise<GeneratedDescriptions | null> {
+export interface GenerateOptions {
+  /**
+   * Try the local model first (fast, free, unlimited) before the remote
+   * provider. Used by the background worker for throughput; live reveals leave
+   * this off so they get the higher-quality remote model when it's reachable.
+   */
+  preferLocal?: boolean;
+}
+
+export async function generateDescriptions(
+  input: DescribeInput,
+  grounding?: Grounding | null,
+  opts: GenerateOptions = {},
+): Promise<GeneratedDescriptions | null> {
   const provider = resolveProvider();
-  if (!provider) return null;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
-  try {
-    return provider === "anthropic"
-      ? await callAnthropic(input, controller.signal)
-      : await callOpenAICompatible(provider, input, controller.signal);
-  } catch (e) {
-    console.warn(`[llm] generation failed: ${(e as Error).message}`);
-    return null;
-  } finally {
-    clearTimeout(timer);
+  if (!provider && !ollamaReady) return null;
+  const facts = grounding ?? null;
+
+  // Each phase gets its own abort budget so a remote timeout never starves the
+  // local fallback.
+  async function withTimeout(
+    ms: number,
+    fn: (signal: AbortSignal) => Promise<GeneratedDescriptions | null>,
+  ): Promise<GeneratedDescriptions | null> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), ms);
+    try {
+      return await fn(controller.signal);
+    } catch (e) {
+      console.warn(`[llm] generation phase failed: ${(e as Error).message}`);
+      return null;
+    } finally {
+      clearTimeout(timer);
+    }
   }
+
+  const remote = (): Promise<GeneratedDescriptions | null> => {
+    if (provider === "anthropic")
+      return withTimeout(TIMEOUT_MS, (s) => callAnthropic(input, facts, s));
+    if (provider)
+      return withTimeout(TIMEOUT_MS, (s) => callOpenAICompatible(provider, input, facts, s));
+    return Promise.resolve(null);
+  };
+  const local = (): Promise<GeneratedDescriptions | null> =>
+    ollamaReady ? withTimeout(OLLAMA_TIMEOUT_MS, (s) => callOllama(input, facts, s)) : Promise.resolve(null);
+
+  const order = opts.preferLocal ? [local, remote] : [remote, local];
+  let raw: GeneratedDescriptions | null = null;
+  for (const attempt of order) {
+    raw = await attempt();
+    if (raw) break;
+  }
+  if (!raw) return null;
+  return verify(raw, input, facts);
 }

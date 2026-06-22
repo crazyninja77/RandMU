@@ -2,7 +2,8 @@ import express from "express";
 import cors from "cors";
 import { getStats, rateSong, getSongById } from "./library.js";
 import { ensureSongDescribed } from "./descriptions.js";
-import { llmStatus } from "./llm.js";
+import { initLlm, llmStatus } from "./llm.js";
+import { startDescriptionWorker } from "./worker.js";
 import {
   PRICE_CENTS,
   createPayment,
@@ -74,16 +75,25 @@ app.get("/api/recommendation/:paymentId", async (req, res) => {
 });
 
 const PORT = Number(process.env.PORT ?? 4000);
-app.listen(PORT, () => {
-  const stats = getStats();
-  console.log(`RandMU backend on http://localhost:${PORT}`);
-  const llm = llmStatus();
-  console.log(
-    llm.available
-      ? `LLM descriptions: ${llm.provider} (${llm.model})`
-      : "LLM descriptions: disabled (no API key) — using templated text",
-  );
-  console.log(
-    `Library: ${stats.total} songs · ${stats.countries} countries · ${stats.genres} genres · ${stats.languages} languages`,
-  );
-});
+
+async function main(): Promise<void> {
+  // Probe the local model so llmStatus/availability reflect it.
+  await initLlm();
+  app.listen(PORT, () => {
+    const stats = getStats();
+    console.log(`RandMU backend on http://localhost:${PORT}`);
+    const llm = llmStatus();
+    console.log(
+      llm.available
+        ? `LLM descriptions: ${llm.provider ?? "local"} (${llm.model})`
+        : "LLM descriptions: disabled (no API key) — using templated text",
+    );
+    console.log(
+      `Library: ${stats.total} songs · ${stats.countries} countries · ${stats.genres} genres · ${stats.languages} languages`,
+    );
+    // Pre-generate descriptions in the background so reveals become instant.
+    startDescriptionWorker();
+  });
+}
+
+void main();
