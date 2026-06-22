@@ -7,6 +7,7 @@ import type { Song } from "./types.js";
 type SeedSong = Omit<
   Song,
   | "id"
+  | "countryCode"
   | "spotifyTrackId"
   | "spotifyUrl"
   | "artistImageUrl"

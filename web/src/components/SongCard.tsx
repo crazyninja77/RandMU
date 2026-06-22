@@ -1,6 +1,7 @@
 import type { Song } from "../types";
 import { SpotifyPlayer } from "./SpotifyPlayer";
 import { RatingSlider } from "./RatingSlider";
+import { CountryMap, hasCountryGeometry } from "./CountryMap";
 import { useI18n } from "../i18n";
 
 function Paragraphs({ text }: { text: string }) {
@@ -43,9 +44,25 @@ function Thumb({
   );
 }
 
+// "World" is the catch-all the ingest assigns when no real style is known; it
+// carries no information, so we don't surface it as a tag. Likewise a few
+// non-musical Spotify "genres" leak through as subgenres.
+const NON_GENRE = /^(world|world music)$/i;
+const JUNK_STYLE = /covid|audiobook/i;
+
+function styleTags(song: Song): string[] {
+  const out: string[] = [];
+  for (const v of [song.genre, song.subgenre]) {
+    const s = v?.trim();
+    if (s && !NON_GENRE.test(s) && !JUNK_STYLE.test(s) && !out.includes(s)) out.push(s);
+  }
+  return out;
+}
+
 export function SongCard({ song, onAgain }: { song: Song; onAgain: () => void }) {
   const { t } = useI18n();
   const album = albumLabel(song);
+  const styles = styleTags(song);
   return (
     <div className="card song-card">
       <div className="song-head">
@@ -64,8 +81,11 @@ export function SongCard({ song, onAgain }: { song: Song; onAgain: () => void })
       <div className="tags">
         {song.country && <span className="tag tag-country">{song.country}</span>}
         {song.language && <span className="tag">{song.language}</span>}
-        {song.genre && <span className="tag tag-genre">{song.genre}</span>}
-        {song.subgenre && <span className="tag">{song.subgenre}</span>}
+        {styles.map((s, i) => (
+          <span key={s} className={i === 0 ? "tag tag-genre" : "tag"}>
+            {s}
+          </span>
+        ))}
         {song.year && <span className="tag tag-year">{song.year}</span>}
       </div>
 
@@ -94,15 +114,22 @@ export function SongCard({ song, onAgain }: { song: Song; onAgain: () => void })
         </div>
       )}
 
-      <button className="btn btn-secondary again-btn" onClick={onAgain}>
-        {t("card.again", { price: "€0,10" })}
-      </button>
+      {song.country && hasCountryGeometry(song.countryCode) && (
+        <div className="desc-block">
+          <h3>{t("card.origin", { country: song.country })}</h3>
+          <CountryMap code={song.countryCode} country={song.country} />
+        </div>
+      )}
 
       <RatingSlider
         songId={song.id}
         initialAverage={song.ratingAverage}
         initialCount={song.ratingCount}
       />
+
+      <button className="btn btn-secondary again-btn" onClick={onAgain}>
+        {t("card.again", { price: "€0,10" })}
+      </button>
     </div>
   );
 }

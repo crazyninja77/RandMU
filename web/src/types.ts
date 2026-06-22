@@ -5,6 +5,7 @@ export interface Song {
   artistDescription: string;
   songDescription: string;
   country: string;
+  countryCode: string | null;
   language: string;
   genre: string;
   subgenre: string;
