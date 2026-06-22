@@ -102,7 +102,7 @@ export function CountryMap({
                     geography={geo}
                     fill={isTarget ? "var(--accent)" : "#241f4d"}
                     stroke="#0d0b1a"
-                    strokeWidth={0.4}
+                    strokeWidth={0.6 / fit.zoom}
                     style={{
                       default: { outline: "none" },
                       hover: {
