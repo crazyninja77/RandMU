@@ -176,6 +176,8 @@ function userPrompt(i: DescribeInput, grounding?: Grounding | null): string {
     "- Never fabricate. Do not hedge with words like 'likely', 'probably', or 'may have'.",
     "- Do not mention AI, metadata, or that information is limited. Write as polished liner notes,",
     "  plain prose, no markdown headings.",
+    "- Never output the track title, artist name, or a bare phrase as a description. Every field",
+    "  must be complete sentences that meet the word counts above.",
   ].join("\n");
 }
 
@@ -250,34 +252,51 @@ async function callOpenAICompatible(
   return null;
 }
 
+// Small local models are noisy: they occasionally echo the title as the whole
+// "description" or emit truncated JSON. Reject those so we retry instead of
+// caching junk.
+const OLLAMA_ATTEMPTS = Number(process.env.OLLAMA_ATTEMPTS ?? 3);
+function looksWeak(g: GeneratedDescriptions, i: DescribeInput): boolean {
+  const wc = (s: string) => s.trim().split(/\s+/).filter(Boolean).length;
+  const squash = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "");
+  if (wc(g.songDescription) < 25 || wc(g.artistDescription) < 25) return true;
+  if (squash(g.songDescription) === squash(i.title)) return true;
+  return false;
+}
+
 // Local Ollama exposes an OpenAI-compatible endpoint at /v1/chat/completions.
 async function callOllama(
   input: DescribeInput,
   grounding: Grounding | null,
   signal: AbortSignal,
 ): Promise<GeneratedDescriptions | null> {
-  const res = await fetch(`${OLLAMA_HOST}/v1/chat/completions`, {
-    method: "POST",
-    signal,
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: OLLAMA_MODEL,
-      temperature: 0.7,
-      max_tokens: MAX_TOKENS,
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: SYSTEM_PROMPT },
-        { role: "user", content: userPrompt(input, grounding) },
-      ],
-    }),
-  });
-  if (!res.ok) {
-    console.warn(`[llm] ollama ${res.status}: ${(await res.text()).slice(0, 160)}`);
-    return null;
+  // Retry a few times within the shared timeout budget, keeping the first
+  // substantive result.
+  for (let attempt = 0; attempt < OLLAMA_ATTEMPTS && !signal.aborted; attempt++) {
+    const res = await fetch(`${OLLAMA_HOST}/v1/chat/completions`, {
+      method: "POST",
+      signal,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: OLLAMA_MODEL,
+        temperature: 0.7,
+        max_tokens: MAX_TOKENS,
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: SYSTEM_PROMPT },
+          { role: "user", content: userPrompt(input, grounding) },
+        ],
+      }),
+    });
+    if (!res.ok) {
+      console.warn(`[llm] ollama ${res.status}: ${(await res.text()).slice(0, 160)}`);
+      return null;
+    }
+    const data = (await res.json()) as { choices?: { message?: { content?: string } }[] };
+    const parsed = extractJson(data.choices?.[0]?.message?.content ?? "");
+    if (parsed && !looksWeak(parsed, input)) return { ...parsed, model: `ollama:${OLLAMA_MODEL}` };
   }
-  const data = (await res.json()) as { choices?: { message?: { content?: string } }[] };
-  const parsed = extractJson(data.choices?.[0]?.message?.content ?? "");
-  return parsed ? { ...parsed, model: `ollama:${OLLAMA_MODEL}` } : null;
+  return null;
 }
 
 async function callAnthropic(

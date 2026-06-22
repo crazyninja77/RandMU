@@ -13,6 +13,7 @@
  * `getJson` helper so we stay polite to each host.
  */
 import { getJson } from "./sources/http.js";
+import { COUNTRIES } from "./sources/refdata.js";
 
 export interface FactInput {
   title: string;
@@ -50,6 +51,45 @@ function mentionsArtist(haystack: string, artist: string): boolean {
   if (!tokens.length) return false;
   const hits = tokens.filter((t) => hay.includes(t)).length;
   return hits / tokens.length >= 0.5;
+}
+
+function normCountry(s: string): string {
+  return s
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/^(the|republic of|democratic republic of)\s+/g, "")
+    .replace(/\bcabo\b/g, "cape")
+    .replace(/[^a-z]+/g, "")
+    .trim();
+}
+const CODE_TO_NAME = new Map(COUNTRIES.map((c) => [c.code.toUpperCase(), normCountry(c.name)]));
+const NAME_TO_CODE = new Map(COUNTRIES.map((c) => [normCountry(c.name), c.code.toUpperCase()]));
+
+/**
+ * Guard against same-name artists from a different country (e.g. a Cape Verdean
+ * "Maria Alice" vs the Portuguese fado singer). Returns false only when both the
+ * song's country and the candidate's country are known and clearly differ; when
+ * the candidate has no country info we can't disprove it, so we allow it.
+ */
+function countryConsistent(songCountry: string, mbCode?: string, mbArea?: string): boolean {
+  if (!songCountry) return true;
+  const wantCode = NAME_TO_CODE.get(normCountry(songCountry));
+  const wantName = normCountry(songCountry);
+  if (mbCode) {
+    const code = mbCode.toUpperCase();
+    if (wantCode) return code === wantCode;
+    const nm = CODE_TO_NAME.get(code);
+    return nm ? nm === wantName : true;
+  }
+  if (mbArea) {
+    const area = normCountry(mbArea);
+    // Area may be a city/region rather than a country; only reject on a clear
+    // country-vs-country mismatch.
+    if (NAME_TO_CODE.has(area)) return area === wantName;
+    return true;
+  }
+  return true;
 }
 
 function yearsIn(text: string): number[] {
@@ -126,13 +166,18 @@ interface MbArtist {
   }[];
 }
 
-async function musicbrainzArtist(artist: string): Promise<string | null> {
+async function musicbrainzArtist(artist: string, country: string): Promise<string | null> {
   try {
     const url =
-      "https://musicbrainz.org/ws/2/artist/?fmt=json&limit=3&query=" +
+      "https://musicbrainz.org/ws/2/artist/?fmt=json&limit=5&query=" +
       encodeURIComponent(`artist:"${artist}"`);
     const data = await getJson<MbArtist>(url);
-    const top = (data.artists ?? []).find((a) => a.score >= 90 && mentionsArtist(a.name, artist));
+    const top = (data.artists ?? []).find(
+      (a) =>
+        a.score >= 90 &&
+        mentionsArtist(a.name, artist) &&
+        countryConsistent(country, a.country, a.area?.name),
+    );
     if (!top) return null;
     const bits: string[] = [];
     if (top.type) bits.push(top.type === "Person" ? "solo artist" : top.type.toLowerCase());
@@ -166,7 +211,7 @@ export async function gatherGrounding(input: FactInput): Promise<Grounding | nul
 
   const [wikiArtist, mbArtist, wikiSong] = await Promise.all([
     wikipediaArtist(input.artist, input.country),
-    musicbrainzArtist(input.artist),
+    musicbrainzArtist(input.artist, input.country),
     wikipediaSong(input.title, input.artist),
   ]);
 
