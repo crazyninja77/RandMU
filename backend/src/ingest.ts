@@ -17,6 +17,7 @@ import { db } from "./db.js";
 import { GENRE_QUERIES, MARKETS, COUNTRY_QUERIES } from "./ingestSeeds.js";
 import { readCandidates } from "./sources/index.js";
 import type { Candidate } from "./sources/types.js";
+import { regionForCode } from "./sources/regions.js";
 import { readCatalog, writeCatalog, type CatalogSong } from "./catalogStore.js";
 import {
   describeSong,
@@ -175,11 +176,18 @@ function titleCase(s: string): string {
   return s.replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-function deriveGenre(genres: string[]): { genre: string; subgenre: string } {
-  if (!genres.length) return { genre: "World", subgenre: "" };
-  const subgenre = titleCase(genres[0]);
+// Spotify exposes some non-musical "genres" (e.g. "death by covid-19",
+// "has german audiobooks") that should never surface as a style.
+const JUNK_GENRE = /covid|audiobook/i;
+
+function deriveGenre(
+  genres: string[],
+  countryCode?: string,
+): { genre: string; subgenre: string } {
+  const clean = genres.map((g) => g.trim()).filter((g) => g && !JUNK_GENRE.test(g));
+  const subgenre = clean.length ? titleCase(clean[0]) : "";
   // pick a broad bucket from the most specific tag
-  const all = genres.join(" ");
+  const all = clean.join(" ");
   const buckets: [RegExp, string][] = [
     [/jazz/, "Jazz"],
     [/hip hop|rap|drill|trap/, "Hip-Hop"],
@@ -193,8 +201,20 @@ function deriveGenre(genres: string[]): { genre: string; subgenre: string } {
     [/r&b|soul|funk/, "Soul/R&B"],
     [/reggae|dancehall|ska/, "Reggae"],
   ];
-  for (const [re, label] of buckets) if (re.test(all)) return { genre: label, subgenre };
-  return { genre: "World", subgenre };
+  for (const [re, label] of buckets) {
+    if (re.test(all)) return { genre: label, subgenre: dedupe(label, subgenre) };
+  }
+  // No specific bucket: fall back to the country's regional umbrella (e.g.
+  // "African", "Latin") rather than the meaningless "World" catch-all.
+  const region = regionForCode(countryCode);
+  if (region) return { genre: region, subgenre: dedupe(region, subgenre) };
+  if (subgenre) return { genre: subgenre, subgenre: "" };
+  return { genre: "World", subgenre: "" };
+}
+
+// Avoid showing the same word twice (e.g. genre "Jazz" + subgenre "Jazz").
+function dedupe(genre: string, subgenre: string): string {
+  return subgenre && subgenre.toLowerCase() === genre.toLowerCase() ? "" : subgenre;
 }
 
 /**
@@ -351,7 +371,7 @@ async function buildCatalogSong(t: SpotifyTrack, cand: Candidate): Promise<Catal
     artistImage = pickImage(a?.images);
   }
   const genres = [cand.genre, ...artistGenres].filter(Boolean);
-  const { genre, subgenre } = deriveGenre(genres);
+  const { genre, subgenre } = deriveGenre(genres, cand.countryCode);
   const country = cand.country;
   const desc = makeDescriptions(t, {
     country,
@@ -518,7 +538,7 @@ async function buildCatalog(target: number) {
     const rows = fresh.map((t) => {
       const artist = artistCache.get(t.artists[0]?.id);
       const genres = artist?.genres ?? [];
-      const { genre, subgenre } = deriveGenre(genres);
+      const { genre, subgenre } = deriveGenre(genres, job.market);
       const country = job.country;
       seen.add(t.id);
       const desc = makeDescriptions(t, {
