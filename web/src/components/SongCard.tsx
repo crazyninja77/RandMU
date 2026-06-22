@@ -1,6 +1,7 @@
 import type { Song } from "../types";
 import { SpotifyPlayer } from "./SpotifyPlayer";
 import { RatingSlider } from "./RatingSlider";
+import { CountryMap } from "./CountryMap";
 import { useI18n } from "../i18n";
 
 function Paragraphs({ text }: { text: string }) {
@@ -68,6 +69,13 @@ export function SongCard({ song, onAgain }: { song: Song; onAgain: () => void })
         {song.subgenre && <span className="tag">{song.subgenre}</span>}
         {song.year && <span className="tag tag-year">{song.year}</span>}
       </div>
+
+      {song.countryCode && song.country && (
+        <div className="desc-block">
+          <h3>{t("card.origin", { country: song.country })}</h3>
+          <CountryMap code={song.countryCode} country={song.country} />
+        </div>
+      )}
 
       <SpotifyPlayer song={song} />
 

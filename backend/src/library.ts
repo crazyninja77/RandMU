@@ -1,5 +1,6 @@
 import { db } from "./db.js";
 import type { Song } from "./types.js";
+import { countryNameToCode } from "./countryCode.js";
 
 interface SongRow {
   id: string;
@@ -31,6 +32,7 @@ function rowToSong(row: SongRow): Song {
     artistDescription: row.artist_description,
     songDescription: row.song_description,
     country: row.country,
+    countryCode: countryNameToCode(row.country),
     language: row.language,
     genre: row.genre,
     subgenre: row.subgenre,
