@@ -7,6 +7,19 @@
  *   npm run ingest -- --resolve            # fill spotify ids for the curated seed songs
  *   npm run ingest -- --catalog            # build the large diverse catalog (default target 10000)
  *   npm run ingest -- --catalog --target 10000
+ *   npm run ingest -- --from-candidates    # resolve harvested candidates one-by-one
+ *   npm run ingest -- --from-playlists     # bulk-harvest from Spotify Browse playlists (50-100× more efficient)
+ *   npm run ingest -- --from-musicbrainz   # discover via MusicBrainz ISRCs, resolve against Spotify
+ *
+ * --from-playlists: Fetches tracks from Spotify's Browse/Playlist endpoints.
+ *   Each playlist yields up to 100 tracks per API call — dramatically more
+ *   efficient than searching one candidate at a time. Best for quickly growing
+ *   the catalog when rate-limited.
+ *
+ * --from-musicbrainz: Queries MusicBrainz for recordings that carry ISRCs
+ *   (International Standard Recording Codes), then searches Spotify by ISRC
+ *   for near-guaranteed 1:1 matches. MusicBrainz is free (1 req/s) so the
+ *   expensive Spotify calls are only used for confirmed real tracks.
  *
  * Spotify does not expose an artist's country, so `country` is derived from the
  * search market for country-specific queries and the artist's Spotify genres are
@@ -24,6 +37,8 @@ import {
   describeAlbum,
   type DescInput,
 } from "./sources/context.js";
+import { COUNTRIES, COUNTRY_BY_CODE, GENRE_TAGS } from "./sources/refdata.js";
+import { getJson } from "./sources/http.js";
 
 const CLIENT_ID = process.env.SPOTIFY_CLIENT_ID;
 const CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET;
@@ -557,6 +572,381 @@ async function buildCatalog(target: number) {
   console.log(`Catalog build done. Added ${added}. Library now ~${seen.size} Spotify tracks.`);
 }
 
+// ---------------------------------------------------------------------------
+// --from-playlists: Bulk-harvest tracks from Spotify Browse/Playlist endpoints.
+// Each playlist fetch returns up to 100 tracks with full IDs — 50-100× more
+// efficient than individual search queries.
+// ---------------------------------------------------------------------------
+
+/** Category IDs that tend to surface diverse, non-Western music. */
+const PLAYLIST_CATEGORIES = [
+  "toplists", "pop", "hiphop", "latin", "rock", "indie_alt",
+  "rnb", "dance", "soul", "jazz", "classical", "arab", "desi",
+  "afro", "metal", "punk", "blues", "reggae", "folk", "country",
+  "kpop", "romance", "party", "chill", "focus", "sleep",
+  "workout", "travel", "dinner", "gaming",
+];
+
+/** Markets to browse for playlists (diverse geographic spread). */
+const PLAYLIST_MARKETS = [
+  "NG", "ZA", "KE", "GH", "EG", "MA", "SN", "ET",
+  "IN", "PK", "ID", "PH", "TH", "JP", "KR", "VN",
+  "TR", "SA", "AE", "IL",
+  "BR", "MX", "CO", "AR", "CL", "PE", "CU", "JM",
+  "PT", "ES", "FR", "DE", "IT", "GR", "PL", "RO", "SE",
+  "US", "GB", "AU", "NZ",
+];
+
+interface SpotifyPlaylistRef {
+  id: string;
+  name: string;
+  tracks: { total: number };
+}
+
+interface PlaylistTrackItem {
+  track: SpotifyTrack | null;
+  is_local?: boolean;
+}
+
+async function getPlaylistsForCategory(
+  categoryId: string,
+  market: string,
+  limit = 10,
+): Promise<SpotifyPlaylistRef[]> {
+  try {
+    const json = await spotify(
+      `/browse/categories/${categoryId}/playlists?country=${market}&limit=${limit}`,
+    );
+    return (json.playlists?.items ?? []).filter(Boolean) as SpotifyPlaylistRef[];
+  } catch (e) {
+    if (e instanceof RateLimitedError) throw e;
+    return [];
+  }
+}
+
+async function getFeaturedPlaylists(market: string, limit = 20): Promise<SpotifyPlaylistRef[]> {
+  try {
+    const json = await spotify(`/browse/featured-playlists?country=${market}&limit=${limit}`);
+    return (json.playlists?.items ?? []).filter(Boolean) as SpotifyPlaylistRef[];
+  } catch (e) {
+    if (e instanceof RateLimitedError) throw e;
+    return [];
+  }
+}
+
+async function getPlaylistTracks(
+  playlistId: string,
+  limit = 100,
+  offset = 0,
+): Promise<SpotifyTrack[]> {
+  const json = await spotify(
+    `/playlists/${playlistId}/tracks?limit=${limit}&offset=${offset}&fields=items(track(id,name,external_urls,artists,album))`,
+  );
+  const items = (json.items ?? []) as PlaylistTrackItem[];
+  return items
+    .filter((i) => i.track && !i.is_local && i.track.id)
+    .map((i) => i.track!)
+    .filter((t) => t.id && t.name && t.artists?.length);
+}
+
+async function fromPlaylists(target: number) {
+  console.log(`Playlist harvest mode (target ${target})...`);
+
+  // Fail fast if Spotify auth is broken
+  await getToken();
+
+  const bySpotify = new Map<string, CatalogSong>();
+  for (const s of readCatalog()) bySpotify.set(s.spotifyTrackId, s);
+  const startCount = bySpotify.size;
+  console.log(`  Resuming from ${startCount} existing catalog songs.`);
+
+  let added = 0;
+  let playlistsFetched = 0;
+  const seenPlaylists = new Set<string>();
+
+  const flush = () => {
+    writeCatalog([...bySpotify.values()]);
+    for (const s of bySpotify.values()) upsert.run(s);
+  };
+
+  try {
+    for (const market of PLAYLIST_MARKETS) {
+      if (bySpotify.size >= target) break;
+
+      // Get playlists from featured + a few categories
+      const playlists: SpotifyPlaylistRef[] = [];
+      playlists.push(...(await getFeaturedPlaylists(market, 10)));
+
+      // Rotate through a subset of categories per market
+      const catSlice = PLAYLIST_CATEGORIES.slice(
+        (PLAYLIST_MARKETS.indexOf(market) * 5) % PLAYLIST_CATEGORIES.length,
+      ).slice(0, 5);
+      for (const cat of catSlice) {
+        playlists.push(...(await getPlaylistsForCategory(cat, market, 5)));
+      }
+
+      for (const pl of playlists) {
+        if (bySpotify.size >= target) break;
+        if (!pl || !pl.id || seenPlaylists.has(pl.id)) continue;
+        seenPlaylists.add(pl.id);
+
+        let tracks: SpotifyTrack[] = [];
+        try {
+          tracks = await getPlaylistTracks(pl.id, 100, 0);
+        } catch (e) {
+          if (e instanceof RateLimitedError) throw e;
+          continue;
+        }
+        playlistsFetched++;
+
+        const fresh = tracks.filter((t) => t.id && !bySpotify.has(t.id));
+        if (!fresh.length) continue;
+
+        // Fetch artist details for genre/image (batch the unique artists)
+        const artistIds = [...new Set(fresh.map((t) => t.artists[0]?.id).filter(Boolean))];
+        await getArtists(artistIds);
+
+        const country = COUNTRY_BY_CODE.get(market);
+        for (const t of fresh) {
+          if (bySpotify.size >= target) break;
+          const artist = artistCache.get(t.artists[0]?.id);
+          const artistGenres = artist?.genres ?? [];
+          const { genre, subgenre } = deriveGenre(artistGenres);
+          const desc = makeDescriptions(t, {
+            country: country?.name ?? "",
+            countryCode: market,
+            language: country?.languages[0] ?? "",
+            genreTag: "",
+            genreBucket: genre,
+            subgenre,
+            artistGenres,
+          });
+          const row: CatalogSong = {
+            id: randomUUID(),
+            title: t.name,
+            artist: t.artists.map((a) => a.name).join(", "),
+            artistDescription: desc.artistDescription,
+            songDescription: desc.songDescription,
+            country: country?.name ?? "",
+            language: country?.languages[0] ?? "",
+            genre,
+            subgenre,
+            albumName: t.album.album_type === "single" ? null : t.album.name,
+            albumType: t.album.album_type,
+            albumDescription: desc.albumDescription,
+            year: t.album.release_date ? Number(t.album.release_date.slice(0, 4)) || null : null,
+            spotifyTrackId: t.id,
+            spotifyUrl: t.external_urls.spotify,
+            artistImageUrl: pickImage(artist?.images),
+            albumImageUrl: pickImage(t.album.images),
+          };
+          bySpotify.set(t.id, row);
+          added++;
+        }
+
+        if (playlistsFetched % 5 === 0) {
+          flush();
+          console.log(
+            `  ${playlistsFetched} playlists (${market}), +${added} songs, catalog ${bySpotify.size}`,
+          );
+        }
+      }
+    }
+  } finally {
+    flush();
+  }
+  console.log(
+    `Playlist harvest done. Added ${added} (was ${startCount}); catalog now ${bySpotify.size} songs.`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// --from-musicbrainz: Discover recordings via MusicBrainz (with ISRCs), then
+// resolve against Spotify using ISRC search for near-guaranteed matches.
+// MusicBrainz is free (1 req/s), so the expensive Spotify calls are only used
+// for confirmed real tracks — near 100% hit rate per API call.
+// ---------------------------------------------------------------------------
+
+const MB_BASE = "https://musicbrainz.org/ws/2";
+
+interface MBRecordingWithISRC {
+  id: string;
+  title: string;
+  isrcs?: string[];
+  "artist-credit"?: { name: string; artist: { id: string; name: string; country?: string } }[];
+  "first-release-date"?: string;
+  tags?: { name: string; count: number }[];
+}
+
+async function mbSearchRecordings(
+  query: string,
+  limit: number,
+  offset: number,
+): Promise<MBRecordingWithISRC[]> {
+  const url = `${MB_BASE}/recording?query=${encodeURIComponent(query)}&fmt=json&limit=${limit}&offset=${offset}`;
+  const json = await getJson<{ recordings?: MBRecordingWithISRC[] }>(url);
+  return json.recordings ?? [];
+}
+
+async function mbGetRecordingISRCs(mbid: string): Promise<string[]> {
+  const url = `${MB_BASE}/recording/${mbid}?inc=isrcs&fmt=json`;
+  const json = await getJson<{ isrcs?: string[] }>(url);
+  return json.isrcs ?? [];
+}
+
+async function mbBrowseRecordings(
+  artistMBID: string,
+  limit: number,
+  offset: number,
+): Promise<MBRecordingWithISRC[]> {
+  const url = `${MB_BASE}/recording?artist=${artistMBID}&inc=isrcs&fmt=json&limit=${limit}&offset=${offset}`;
+  const json = await getJson<{ recordings?: MBRecordingWithISRC[] }>(url);
+  return json.recordings ?? [];
+}
+
+async function mbSearchArtistsByCountry(
+  countryCode: string,
+  limit: number,
+  offset: number,
+): Promise<{ id: string; name: string; country?: string; tags?: { name: string; count: number }[] }[]> {
+  const url = `${MB_BASE}/artist?query=country:${countryCode}&fmt=json&limit=${limit}&offset=${offset}`;
+  const json = await getJson<{ artists?: any[] }>(url);
+  return json.artists ?? [];
+}
+
+async function fromMusicBrainz(target: number) {
+  console.log(`MusicBrainz+ISRC hybrid mode (target ${target})...`);
+
+  const bySpotify = new Map<string, CatalogSong>();
+  for (const s of readCatalog()) bySpotify.set(s.spotifyTrackId, s);
+  const startCount = bySpotify.size;
+  console.log(`  Resuming from ${startCount} existing catalog songs.`);
+
+  // Track ISRCs already resolved to avoid re-searching
+  const resolvedISRCs = new Set<string>();
+  for (const s of bySpotify.values()) resolvedISRCs.add(s.spotifyTrackId);
+
+  let added = 0;
+  let spotifyCalls = 0;
+  const flush = () => {
+    writeCatalog([...bySpotify.values()]);
+    for (const s of bySpotify.values()) upsert.run(s);
+  };
+
+  // Round-robin across countries for diversity
+  const countries = [...COUNTRIES].sort(() => Math.random() - 0.5);
+
+  try {
+    for (const countryRef of countries) {
+      if (bySpotify.size >= target) break;
+
+      // Get artists from this country via MusicBrainz
+      let artists: { id: string; name: string; country?: string; tags?: { name: string; count: number }[] }[] = [];
+      try {
+        artists = await mbSearchArtistsByCountry(countryRef.code, 25, 0);
+      } catch {
+        continue;
+      }
+
+      for (const artist of artists) {
+        if (bySpotify.size >= target) break;
+
+        // Get recordings with ISRCs for this artist
+        let recordings: MBRecordingWithISRC[] = [];
+        try {
+          recordings = await mbBrowseRecordings(artist.id, 25, 0);
+        } catch {
+          continue;
+        }
+
+        // Filter to recordings that have ISRCs
+        const withISRC = recordings.filter((r) => r.isrcs && r.isrcs.length > 0);
+        if (!withISRC.length) continue;
+
+        for (const rec of withISRC.slice(0, 5)) {
+          if (bySpotify.size >= target) break;
+          const isrc = rec.isrcs![0];
+          if (resolvedISRCs.has(isrc)) continue;
+          resolvedISRCs.add(isrc);
+
+          // Search Spotify by ISRC — near-guaranteed 1:1 match
+          let tracks: SpotifyTrack[] = [];
+          try {
+            tracks = await searchTracks(`isrc:${isrc}`, countryRef.code, 1);
+            spotifyCalls++;
+          } catch (e) {
+            if (e instanceof RateLimitedError) throw e;
+            continue;
+          }
+
+          if (!tracks.length || !tracks[0].id || bySpotify.has(tracks[0].id)) continue;
+
+          const t = tracks[0];
+          // Get artist details for genre/image
+          const primaryId = t.artists[0]?.id;
+          let artistGenres: string[] = [];
+          let artistImage: string | null = null;
+          if (primaryId) {
+            await getArtists([primaryId]);
+            const a = artistCache.get(primaryId);
+            artistGenres = a?.genres ?? [];
+            artistImage = pickImage(a?.images);
+            spotifyCalls++;
+          }
+
+          const genreTag = (artist.tags ?? []).sort((a, b) => (b.count ?? 0) - (a.count ?? 0))[0]?.name ?? "";
+          const { genre, subgenre } = deriveGenre([genreTag, ...artistGenres]);
+
+          const desc = makeDescriptions(t, {
+            country: countryRef.name,
+            countryCode: countryRef.code,
+            language: countryRef.languages[0] ?? "",
+            genreTag,
+            genreBucket: genre,
+            subgenre,
+            artistGenres,
+          });
+
+          const row: CatalogSong = {
+            id: randomUUID(),
+            title: t.name,
+            artist: t.artists.map((a) => a.name).join(", "),
+            artistDescription: desc.artistDescription,
+            songDescription: desc.songDescription,
+            country: countryRef.name,
+            language: countryRef.languages[0] ?? "",
+            genre,
+            subgenre,
+            albumName: t.album.album_type === "single" ? null : t.album.name,
+            albumType: t.album.album_type,
+            albumDescription: desc.albumDescription,
+            year: t.album.release_date ? Number(t.album.release_date.slice(0, 4)) || null : null,
+            spotifyTrackId: t.id,
+            spotifyUrl: t.external_urls.spotify,
+            artistImageUrl: artistImage,
+            albumImageUrl: pickImage(t.album.images),
+          };
+          bySpotify.set(t.id, row);
+          added++;
+        }
+
+        if (added > 0 && added % 50 === 0) {
+          flush();
+          console.log(
+            `  MB: +${added} songs (${spotifyCalls} Spotify calls), catalog ${bySpotify.size} | ${countryRef.name}`,
+          );
+        }
+      }
+    }
+  } finally {
+    flush();
+  }
+  console.log(
+    `MusicBrainz+ISRC done. Added ${added} (was ${startCount}, ${spotifyCalls} Spotify calls); ` +
+      `catalog now ${bySpotify.size} songs.`,
+  );
+}
+
 async function main() {
   const args = process.argv.slice(2);
   const targetIdx = args.indexOf("--target");
@@ -567,6 +957,8 @@ async function main() {
 
   if (args.includes("--resolve") || args.length === 0) await resolveSeed();
   if (args.includes("--from-candidates")) await resolveCandidates(target, tracksPerArtist);
+  if (args.includes("--from-playlists")) await fromPlaylists(target);
+  if (args.includes("--from-musicbrainz")) await fromMusicBrainz(target);
   if (args.includes("--catalog")) await buildCatalog(target);
   console.log("Done.");
 }
