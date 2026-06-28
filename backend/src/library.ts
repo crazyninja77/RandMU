@@ -137,6 +137,14 @@ export function countBySource(): Record<string, number> {
   return Object.fromEntries(rows.map((r) => [r.s, r.c]));
 }
 
+export function getCountryStats(): { country: string; count: number }[] {
+  return db
+    .prepare(
+      "SELECT country, COUNT(*) AS count FROM songs WHERE country != '' GROUP BY country ORDER BY count DESC",
+    )
+    .all() as { country: string; count: number }[];
+}
+
 export function getStats() {
   const total = (db.prepare("SELECT COUNT(*) AS c FROM songs").get() as { c: number }).c;
   const countries = (

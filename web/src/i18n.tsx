@@ -39,6 +39,9 @@ const EN: Dict = {
   "rate.count": "{count} ratings",
   "rate.thanks": "Thanks for rating!",
   "footer.text": "RandMU — a song for {price}. Payments are mocked for now.",
+  "map.title": "Music from everywhere",
+  "map.subtitle": "{countries} countries · {songs} songs in the catalogue",
+  "map.ariaLabel": "World map showing countries represented in the RandMU catalogue",
 };
 
 const NL: Dict = {
@@ -76,6 +79,9 @@ const NL: Dict = {
   "rate.count": "{count} beoordelingen",
   "rate.thanks": "Bedankt voor je beoordeling!",
   "footer.text": "RandMU — een nummer voor {price}. Betalingen zijn voorlopig nagebootst.",
+  "map.title": "Muziek van overal",
+  "map.subtitle": "{countries} landen · {songs} nummers in de catalogus",
+  "map.ariaLabel": "Wereldkaart met landen vertegenwoordigd in de RandMU-catalogus",
 };
 
 const DICTS: Record<Lang, Dict> = { en: EN, nl: NL };

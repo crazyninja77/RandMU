@@ -19,8 +19,14 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+export interface CountryStat {
+  country: string;
+  count: number;
+}
+
 export const api = {
   stats: () => req<Stats>("/api/stats"),
+  countries: () => req<CountryStat[]>("/api/countries"),
   createPayment: () => req<{ payment: Payment }>("/api/payments", { method: "POST" }),
   confirmPayment: (id: string) =>
     req<{ payment: Payment; song: Song | null }>(`/api/payments/${id}/confirm`, {

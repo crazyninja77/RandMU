@@ -43,7 +43,7 @@ function Thumb({
   );
 }
 
-export function SongCard({ song, onAgain }: { song: Song; onAgain: () => void }) {
+export function SongCard({ song, onAgain, purchasing, error }: { song: Song; onAgain: () => void; purchasing?: boolean; error?: string | null }) {
   const { t } = useI18n();
   const album = albumLabel(song);
   return (
@@ -94,9 +94,10 @@ export function SongCard({ song, onAgain }: { song: Song; onAgain: () => void })
         </div>
       )}
 
-      <button className="btn btn-secondary again-btn" onClick={onAgain}>
-        {t("card.again", { price: "€0,10" })}
+      <button className="btn btn-primary again-btn" onClick={onAgain} disabled={purchasing}>
+        {purchasing ? t("reveal.drawing") : t("card.again", { price: "€0,10" })}
       </button>
+      {error && <p className="error">{error}</p>}
 
       <RatingSlider
         songId={song.id}
