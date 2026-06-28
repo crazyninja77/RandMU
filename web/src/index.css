@@ -545,6 +545,27 @@ body {
   }
 }
 
+/* Country mini-map (SongCard) */
+.country-minimap {
+  background: rgba(20, 16, 40, 0.6);
+  border: 1px solid #2e2a55;
+  border-radius: 12px;
+  overflow: hidden;
+  margin: 8px 0;
+}
+.minimap-svg {
+  width: 100%;
+  height: 120px;
+  display: block;
+}
+@keyframes pulse-ring {
+  0% { r: 18; opacity: 0.5; }
+  100% { r: 30; opacity: 0; }
+}
+.minimap-pulse {
+  animation: pulse-ring 1.8s ease-out infinite;
+}
+
 /* World map */
 .world-map-section {
   text-align: center;

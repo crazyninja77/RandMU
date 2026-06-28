@@ -1,6 +1,7 @@
 import type { Song } from "../types";
 import { SpotifyPlayer } from "./SpotifyPlayer";
 import { RatingSlider } from "./RatingSlider";
+import { CountryMiniMap } from "./CountryMiniMap";
 import { useI18n } from "../i18n";
 
 function Paragraphs({ text }: { text: string }) {
@@ -68,6 +69,8 @@ export function SongCard({ song, onAgain, purchasing, error }: { song: Song; onA
         {song.subgenre && <span className="tag">{song.subgenre}</span>}
         {song.year && <span className="tag tag-year">{song.year}</span>}
       </div>
+
+      {song.country && <CountryMiniMap country={song.country} />}
 
       <SpotifyPlayer song={song} />
 
