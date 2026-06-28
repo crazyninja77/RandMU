@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: randmu
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: PORT
+        value: "4000"
+      - key: OLLAMA_DISABLED
+        value: "1"
+      - key: OPENAI_API_KEY
+        sync: false  # set manually in the Render dashboard

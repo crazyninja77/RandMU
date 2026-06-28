@@ -1,5 +1,8 @@
 import express from "express";
 import cors from "cors";
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 import { getStats, rateSong, getSongById } from "./library.js";
 import { ensureSongDescribed } from "./descriptions.js";
 import { initLlm, llmStatus } from "./llm.js";
@@ -12,6 +15,8 @@ import {
   getPayment,
   getPaymentSong,
 } from "./payments.js";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const app = express();
 app.use(cors());
@@ -73,6 +78,16 @@ app.get("/api/recommendation/:paymentId", async (req, res) => {
   const described = await ensureSongDescribed(song);
   res.json({ song: described });
 });
+
+// In production, serve the pre-built frontend from ../web/dist.
+const STATIC_DIR = join(__dirname, "..", "..", "web", "dist");
+if (existsSync(STATIC_DIR)) {
+  app.use(express.static(STATIC_DIR));
+  // SPA fallback: any non-API route serves index.html.
+  app.get("*", (_req, res) => {
+    res.sendFile(join(STATIC_DIR, "index.html"));
+  });
+}
 
 const PORT = Number(process.env.PORT ?? 4000);
 
