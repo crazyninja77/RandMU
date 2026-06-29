@@ -3,7 +3,7 @@ import cors from "cors";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { getStats, rateSong, getSongById } from "./library.js";
+import { getStats, getCountryStats, rateSong, getSongById } from "./library.js";
 import { ensureSongDescribed } from "./descriptions.js";
 import { initLlm, llmStatus } from "./llm.js";
 import { startDescriptionWorker } from "./worker.js";
@@ -28,6 +28,10 @@ app.get("/api/health", (_req, res) => {
 
 app.get("/api/stats", (_req, res) => {
   res.json({ ...getStats(), priceCents: PRICE_CENTS });
+});
+
+app.get("/api/countries", (_req, res) => {
+  res.json(getCountryStats());
 });
 
 // Create a pending iDEAL payment for one recommendation.

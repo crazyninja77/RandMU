@@ -3,6 +3,7 @@ import { api } from "./api";
 import type { Payment, Song, Stats } from "./types";
 import { IdealModal } from "./components/IdealModal";
 import { SongCard } from "./components/SongCard";
+import { WorldMap } from "./components/WorldMap";
 import { useI18n, type Lang } from "./i18n";
 
 type View =
@@ -42,13 +43,18 @@ export default function App() {
 
   const price = stats ? `€${(stats.priceCents / 100).toFixed(2).replace(".", ",")}` : "€0,10";
 
+  const [purchasing, setPurchasing] = useState(false);
+
   async function startPurchase() {
     setError(null);
+    setPurchasing(true);
     try {
       const { payment } = await api.createPayment();
       setView({ kind: "paying", payment });
     } catch (e) {
       setError((e as Error).message);
+    } finally {
+      setPurchasing(false);
     }
   }
 
@@ -93,19 +99,22 @@ export default function App() {
 
       <main className="main">
         {view.kind === "idle" && (
-          <section className="hero">
-            <h1>
-              {t("hero.title.pre")}
-              <em>{t("hero.title.em")}</em>
-              {t("hero.title.post")}
-            </h1>
-            <p className="lede">{t("hero.lede", { price })}</p>
-            <button className="btn btn-primary big" onClick={startPurchase}>
-              {t("hero.cta", { price })}
-            </button>
-            <p className="paywith">{t("hero.paywith")}</p>
-            {error && <p className="error">{error}</p>}
-          </section>
+          <>
+            <section className="hero">
+              <h1>
+                {t("hero.title.pre")}
+                <em>{t("hero.title.em")}</em>
+                {t("hero.title.post")}
+              </h1>
+              <p className="lede">{t("hero.lede", { price })}</p>
+              <button className="btn btn-primary big" onClick={startPurchase} disabled={purchasing}>
+                {t("hero.cta", { price })}
+              </button>
+              <p className="paywith">{t("hero.paywith")}</p>
+              {error && <p className="error">{error}</p>}
+            </section>
+            <WorldMap />
+          </>
         )}
 
         {view.kind === "paying" && (
@@ -124,7 +133,7 @@ export default function App() {
         )}
 
         {view.kind === "result" && (
-          <SongCard song={view.song} onAgain={startPurchase} />
+          <SongCard song={view.song} onAgain={startPurchase} purchasing={purchasing} error={error} />
         )}
       </main>
 
