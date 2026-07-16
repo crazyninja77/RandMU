@@ -2,6 +2,7 @@ import type { Song } from "./types.js";
 import { getSongById, setSongDescriptions } from "./library.js";
 import { generateDescriptions, llmAvailable, llmStatus, type GenerateOptions } from "./llm.js";
 import { gatherGrounding } from "./grounding.js";
+import { getAudioFeatures, describeAudioFeatures } from "./spotifyAudio.js";
 import { descriptionKey, recordDescription } from "./descriptionStore.js";
 
 // De-duplicate concurrent generations for the same song so two simultaneous
@@ -18,14 +19,17 @@ function needsGeneration(song: Song): boolean {
  * Shared by the live reveal path and the background pre-generation worker.
  */
 export async function describeSong(song: Song, opts: GenerateOptions = {}): Promise<Song> {
-  const grounding = await gatherGrounding({
-    title: song.title,
-    artist: song.artist,
-    country: song.country,
-    year: song.year,
-    albumName: song.albumName,
-    albumType: song.albumType,
-  });
+  const [grounding, audio] = await Promise.all([
+    gatherGrounding({
+      title: song.title,
+      artist: song.artist,
+      country: song.country,
+      year: song.year,
+      albumName: song.albumName,
+      albumType: song.albumType,
+    }),
+    getAudioFeatures(song.spotifyTrackId),
+  ]);
   const generated = await generateDescriptions(
     {
       title: song.title,
@@ -37,6 +41,7 @@ export async function describeSong(song: Song, opts: GenerateOptions = {}): Prom
       albumName: song.albumName,
       albumType: song.albumType,
       year: song.year,
+      acousticProfile: audio ? describeAudioFeatures(audio) : null,
     },
     grounding,
     opts,

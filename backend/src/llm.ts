@@ -19,6 +19,8 @@ export interface DescribeInput {
   albumName: string | null;
   albumType: string | null;
   year: number | null;
+  /** Human-readable acoustic profile from Spotify audio features, if available. */
+  acousticProfile?: string | null;
 }
 
 export interface GeneratedDescriptions {
@@ -144,10 +146,17 @@ function userPrompt(i: DescribeInput, grounding?: Grounding | null): string {
   const facts = grounding?.text
     ? [
         "",
-        "Verified facts (researched from Wikipedia/MusicBrainz). Use ONLY these for any",
-        "specific claim (dates, origin, career stage, collaborators). Do NOT contradict",
-        "them and do NOT introduce other specific facts beyond them or the metadata:",
+        "Verified facts (researched from Wikipedia/MusicBrainz/Wikidata). Use ONLY these for any",
+        "specific claim (dates, origin, career stage, collaborators, labels, awards). Do NOT",
+        "contradict them and do NOT introduce other specific facts beyond them or the metadata:",
         grounding.text,
+      ]
+    : [];
+  const acoustic = i.acousticProfile
+    ? [
+        "",
+        "Acoustic profile (measured from the actual audio — use to describe how it sounds):",
+        i.acousticProfile,
       ]
     : [];
   return [
@@ -157,6 +166,7 @@ function userPrompt(i: DescribeInput, grounding?: Grounding | null): string {
     "Track metadata:",
     JSON.stringify(meta, null, 2),
     ...facts,
+    ...acoustic,
     "",
     "Requirements:",
     "- songDescription (2 short paragraphs, ~70-120 words total): what the track sounds like",
