@@ -23,6 +23,8 @@ export async function describeSong(song: Song, opts: GenerateOptions = {}): Prom
     artist: song.artist,
     country: song.country,
     year: song.year,
+    albumName: song.albumName,
+    albumType: song.albumType,
   });
   const generated = await generateDescriptions(
     {
