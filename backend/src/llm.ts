@@ -35,6 +35,8 @@ export interface GeneratedDescriptions {
 export interface Grounding {
   text: string;
   years: number[];
+  /** Proper-noun facts (collaborators, labels, awards) known to be true. */
+  entities?: string[];
 }
 
 type Provider = "openai" | "openrouter" | "anthropic";
@@ -353,6 +355,42 @@ function stripUnsupportedYears(text: string, allowed: Set<number>): string {
   return kept.join(" ").trim();
 }
 
+// Claim types that models love to fabricate. Each sentence asserting one of
+// these is dropped unless the researched grounding actually backs that kind of
+// claim (e.g. the model says "won a Grammy" but no award appears in the facts).
+const CLAIM_TESTS: { re: RegExp; supported: (facts: string) => boolean }[] = [
+  {
+    re: /\bgrammy\b/i,
+    supported: (f) => /\bgrammy\b/.test(f),
+  },
+  {
+    re: /\b(award|awarded|prize|laureate|hall of fame|inducted)\b|\bwon (a|an|the|multiple|several|numerous)\b/i,
+    supported: (f) =>
+      /\b(award|prize|laureate|hall of fame|inducted|medal|honou?r|knight|order of|grammy|winner|won)\b/.test(
+        f,
+      ),
+  },
+  {
+    re: /\b(certified|platinum|gold record|gold disc|diamond)\b/i,
+    supported: (f) => /\b(certif|platinum|gold|diamond)\b/.test(f),
+  },
+  {
+    re: /\b(number[- ]one|no\.?\s?1|#\s?1|topped the charts?|chart-topping|top of the charts?|billboard|peaked at)\b/i,
+    supported: (f) =>
+      /\b(chart|billboard|number[- ]one|no\.?\s?1|#\s?1|peaked|top \d)\b/.test(f),
+  },
+];
+
+/** Drop sentences making award / chart / certification claims not backed by facts. */
+function stripUnsupportedClaims(text: string, groundingText: string): string {
+  const facts = groundingText.toLowerCase();
+  const sentences = text.split(/(?<=[.!?])\s+/);
+  const kept = sentences.filter((s) =>
+    CLAIM_TESTS.every((t) => !t.re.test(s) || t.supported(facts)),
+  );
+  return kept.join(" ").trim();
+}
+
 function wordCount(s: string): number {
   return s.trim().split(/\s+/).filter(Boolean).length;
 }
@@ -364,14 +402,14 @@ function verify(
 ): GeneratedDescriptions | null {
   const allowed = new Set<number>(grounding?.years ?? []);
   if (input.year) allowed.add(input.year);
-  const songDescription = stripUnsupportedYears(gen.songDescription, allowed);
-  const artistDescription = stripUnsupportedYears(gen.artistDescription, allowed);
+  const factText = grounding?.text ?? "";
+  const clean = (t: string) => stripUnsupportedClaims(stripUnsupportedYears(t, allowed), factText);
+  const songDescription = clean(gen.songDescription);
+  const artistDescription = clean(gen.artistDescription);
   // If stripping gutted the prose, treat as a failed generation (caller falls
   // back to template; the background worker will retry later).
   if (wordCount(songDescription) < 30 || wordCount(artistDescription) < 25) return null;
-  const albumDescription = gen.albumDescription
-    ? stripUnsupportedYears(gen.albumDescription, allowed) || null
-    : null;
+  const albumDescription = gen.albumDescription ? clean(gen.albumDescription) || null : null;
   return { songDescription, artistDescription, albumDescription, model: gen.model };
 }
 
