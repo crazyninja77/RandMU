@@ -95,7 +95,7 @@ export async function harvestReddit(opts: RedditOptions): Promise<Candidate[]> {
     log("Reddit skipped (set REDDIT_CLIENT_ID / REDDIT_CLIENT_SECRET to enable).");
     return [];
   }
-  const token = await getToken();
+  let token = await getToken();
   const candidates: Candidate[] = [];
   for (const s of SUBREDDITS) {
     const url = `https://oauth.reddit.com/r/${s.sub}/top?t=all&limit=${opts.postsPerSub}`;
@@ -103,8 +103,19 @@ export async function harvestReddit(opts: RedditOptions): Promise<Candidate[]> {
     try {
       json = await getJson(url, { Authorization: `Bearer ${token}` });
     } catch (e) {
-      log(`  reddit r/${s.sub} failed: ${(e as Error).message}`);
-      continue;
+      // App-only tokens expire after ~1h; refresh once and retry before giving up.
+      if (/->\s*401/.test((e as Error).message)) {
+        try {
+          token = await getToken();
+          json = await getJson(url, { Authorization: `Bearer ${token}` });
+        } catch (e2) {
+          log(`  reddit r/${s.sub} failed after token refresh: ${(e2 as Error).message}`);
+          continue;
+        }
+      } else {
+        log(`  reddit r/${s.sub} failed: ${(e as Error).message}`);
+        continue;
+      }
     }
     for (const child of json.data?.children ?? []) {
       if (child.data.over_18 || child.data.stickied) continue;
