@@ -21,7 +21,14 @@ export interface DescribeInput {
   year: number | null;
   /** Human-readable acoustic profile from Spotify audio features, if available. */
   acousticProfile?: string | null;
+  /** Language to write the prose in (JSON keys stay English). Defaults to English. */
+  lang?: string;
 }
+
+const LANGUAGE_NAMES: Record<string, string> = {
+  en: "English",
+  nl: "Dutch",
+};
 
 export interface GeneratedDescriptions {
   songDescription: string;
@@ -165,9 +172,19 @@ function userPrompt(i: DescribeInput, grounding?: Grounding | null): string {
         i.acousticProfile,
       ]
     : [];
+  const langName = LANGUAGE_NAMES[i.lang ?? "en"] ?? "English";
+  const langLine =
+    langName === "English"
+      ? []
+      : [
+          "",
+          `Write ALL prose values in ${langName}. The JSON keys stay in English, but every`,
+          `description must be natural, fluent ${langName}. Keep proper nouns (names, places) as-is.`,
+        ];
   return [
     "Write liner notes for this specific track. Return ONLY a JSON object with keys",
     '"songDescription", "artistDescription", and "albumDescription".',
+    ...langLine,
     "",
     "Track metadata:",
     JSON.stringify(meta, null, 2),

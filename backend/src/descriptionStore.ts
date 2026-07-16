@@ -23,6 +23,8 @@ export interface StoredDescription {
   albumDescription: string | null;
   model: string;
   generatedAt: string;
+  /** BCP-47-ish language code; absent means English (the base language). */
+  lang?: string;
 }
 
 /** Stable key for a song: prefer the Spotify track id, else artist|title. */
@@ -34,6 +36,14 @@ export function descriptionKey(opts: {
   if (opts.spotifyTrackId) return `sp:${opts.spotifyTrackId}`;
   const norm = (s: string) => s.toLowerCase().normalize("NFKD").replace(/\s+/g, " ").trim();
   return `at:${norm(opts.artist)}|${norm(opts.title)}`;
+}
+
+/**
+ * Overlay key for a specific language. English (the base) keeps the bare key so
+ * the existing overlay and seeding stay unchanged; other locales get a suffix.
+ */
+export function localizedKey(baseKey: string, lang: string): string {
+  return lang === "en" ? baseKey : `${baseKey}#${lang}`;
 }
 
 /** Load the overlay as a map (last write wins for a given key). */
