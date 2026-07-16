@@ -223,8 +223,10 @@ why it matters — and **caches the result** so each song is generated at most o
 - Model: `backend/src/llm.ts` is provider‑agnostic with a fallback chain:
   - **Remote** — auto‑detects the key (`ANTHROPIC_API_KEY` → Claude;
     `OPENAI_API_KEY` → OpenAI, or OpenRouter when the key is `sk-or-…`). On
-    OpenRouter it defaults to a list of **free** models tried in order, falling
-    through on per‑model 429s. Overridable via `LLM_PROVIDER` / `LLM_MODEL`.
+    OpenRouter it defaults to a list of **free**, structured‑output‑capable
+    models tried in order, falling through on per‑model 429s/timeouts. (Free
+    model IDs go stale — if generation 404s, refresh the list in `llm.ts`.)
+    Overridable via `LLM_PROVIDER` / `LLM_MODEL`.
   - **Local (Ollama)** — if a model is running on the box (`OLLAMA_HOST`,
     default `qwen2.5:3b-instruct`) it is used as a last resort when every remote
     model fails, or first when `preferLocal` is set. This makes generation work
@@ -232,16 +234,38 @@ why it matters — and **caches the result** so each song is generated at most o
   - With neither configured, generation is skipped and the templated text from
     (b) is served unchanged.
 - **Fact grounding (RAG)** — before generating, `backend/src/grounding.ts`
-  fetches genuinely true facts about the artist/song from free, credential‑less
-  sources (**Wikipedia** summary + **MusicBrainz** artist record), with a
-  relevance guard that rejects wrong‑topic hits (e.g. an award page). These facts
-  are injected into the prompt; the model must ground specific claims in them and
-  otherwise speak about genre/region/era. This sharply improves accuracy and
-  surfaces real niche facts even on weak free models.
-- **Verification pass** — generated prose is scanned for precise years not backed
-  by the metadata or grounded facts; offending sentences are dropped (the most
-  common fabrication on small models). If too little survives, the generation is
-  treated as failed and retried later.
+  gathers genuinely true facts about the artist/song/album from free,
+  credential‑less sources, with a relevance guard that rejects wrong‑topic hits
+  (e.g. an award page). As of the description‑enrichment work (PR #15) this is
+  much richer than a single summary:
+  - **Wikipedia** — full article *leads* for the artist (~1,400 chars), the song
+    (~900), and the album (~700), not just the first summary sentence.
+  - **MusicBrainz** — recording‑level facts: release date, ISRC, artist credits,
+    and recording relations (producers, guests, labels).
+  - **Wikidata** — structured claims: genres, record labels, awards, band
+    members / member‑of, instruments, country of origin, and formed/born years.
+  - The gathered facts, plus the aggregated proper‑noun **entities**, source
+    list and years, are injected into the prompt; the model must ground specific
+    claims in them and otherwise speak about genre/region/era.
+- **Acoustic profile** — `backend/src/spotifyAudio.ts` best‑effort pulls Spotify
+  **audio features** (tempo, energy, danceability, valence, acousticness,
+  instrumentalness, speechiness, key/mode) and turns them into a short phrase
+  (e.g. *"up‑tempo (~128 BPM), high‑energy, highly danceable, in G major"*) so the
+  "what it sounds like" language is grounded in real signal. This degrades to
+  `null` safely on 403/404/429 (newer app tiers / rate‑limit bans) — its absence
+  never breaks generation.
+- **Verification pass** (`backend/src/llm.ts`) — generated prose is scanned for
+  fabrication‑prone specifics not backed by the metadata or grounded facts, and
+  offending sentences are dropped: precise **years** (the most common small‑model
+  fabrication) plus **awards** (Grammy/prizes/halls of fame), **chart** claims
+  (Billboard/number‑one), and **certifications** (gold/platinum/diamond). If too
+  little survives, the generation is treated as failed and retried later.
+- **Structured output** — remote calls request a strict `json_schema`
+  `response_format` (`liner_notes` schema: song/artist/album strings), removing
+  the fragile brace‑scraping fallback. Set `LLM_JSON_SCHEMA=off` to fall back to
+  `json_object` for models that don't support strict schemas. Each candidate
+  model gets its **own timeout** so one slow reasoning model can't starve the
+  fallbacks.
 - **Background pre‑generation** (`backend/src/worker.ts`) — on startup the server
   launches a gentle worker that walks the catalogue and pre‑generates descriptions
   (local‑first for throughput, with backoff), so reveals become **instant** and
@@ -250,6 +274,13 @@ why it matters — and **caches the result** so each song is generated at most o
   description is appended to a committed `backend/data/descriptions.ndjson`, keyed
   by Spotify track id. `seed.ts` re‑applies it when rebuilding the DB, so a song
   is generated **once ever** — surviving restarts, redeploys and fresh clones.
+- **Per‑locale (EN/NL) generation** — the UI language toggle (`web/src/i18n.tsx`,
+  EN/NL) is threaded through to generation: `GET /api/recommendation/:id?lang=nl`
+  calls `describeSongLocalized(song, "nl")`, which generates prose in the target
+  language from the *same* grounding/audio facts and caches it under a
+  `#<lang>`‑suffixed overlay key (English keeps the base key, so existing seeding
+  is unchanged). Toggling the language only re‑fetches on a **new** reveal — it
+  does not re‑translate an already‑revealed card.
 - `description_source` (column on `songs`) records which path produced the prose:
   `curated` | `template` | `llm`.
 
@@ -302,3 +333,10 @@ before `npm run harvest`.
 - The Spotify resolve step (Phase 2) is gated by a temporary ~24h Spotify
   rate‑limit ban; a one‑time scheduled session runs it automatically once the ban
   lifts, then commits `catalog.ndjson.gz` and updates the PR with final counts.
+- Description quality was substantially upgraded in **PR #15** (richer grounding,
+  Spotify acoustic profile, awards/chart/certification claim‑stripping, strict
+  `json_schema` output, and per‑locale EN/NL generation). See §4 above.
+
+**For a running project log — what's merged, current catalogue numbers, open
+threads and prioritized next steps so work can resume from GitHub alone — see
+[`docs/PROGRESS.md`](./PROGRESS.md).**
