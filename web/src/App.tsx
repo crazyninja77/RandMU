@@ -32,7 +32,7 @@ function LangToggle() {
 }
 
 export default function App() {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const [stats, setStats] = useState<Stats | null>(null);
   const [view, setView] = useState<View>({ kind: "idle" });
   const [error, setError] = useState<string | null>(null);
@@ -69,7 +69,7 @@ export default function App() {
     // confirmation if that request fails.
     setView({ kind: "revealing" });
     try {
-      const { song: described } = await api.recommendation(paymentId);
+      const { song: described } = await api.recommendation(paymentId, lang);
       setView({ kind: "result", song: described });
     } catch {
       setView({ kind: "result", song });

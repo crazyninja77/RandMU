@@ -78,8 +78,10 @@ app.post("/api/songs/:id/rate", (req, res) => {
 app.get("/api/recommendation/:paymentId", async (req, res) => {
   const song = getPaymentSong(req.params.paymentId);
   if (!song) return res.status(402).json({ error: "payment_required" });
-  // Generate + cache unique liner notes for this song on first reveal.
-  const described = await ensureSongDescribed(song);
+  // Generate + cache unique liner notes for this song on first reveal, in the
+  // requested UI language (defaults to English).
+  const lang = req.query.lang === "nl" ? "nl" : "en";
+  const described = await ensureSongDescribed(song, lang);
   res.json({ song: described });
 });
 
