@@ -39,6 +39,15 @@ npm run dev       # http://localhost:5173  (proxies /api to :4000)
 
 Open http://localhost:5173 and click **Surprise me**.
 
+### Demo catalogue mode
+
+Set `RANDMU_DEMO_MODE=1` to expose only songs with curated generated-description
+overlays through recommendations, statistics, and the map. The complete catalogue
+remains seeded and can be activated later by removing the variable.
+
+Set `DESCRIPTION_WORKER=off` with demo mode to keep the visible collection fixed
+instead of generating and exposing additional descriptions in the background.
+
 ## The song library
 
 The starter library in `backend/src/seedData.ts` is a small, hand-curated set of

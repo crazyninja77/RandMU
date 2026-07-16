@@ -3,7 +3,7 @@ import cors from "cors";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { getStats, getCountryStats, rateSong, getSongById } from "./library.js";
+import { DEMO_MODE, getStats, getCountryStats, rateSong, getSongById } from "./library.js";
 import { ensureSongDescribed } from "./descriptions.js";
 import { initLlm, llmStatus } from "./llm.js";
 import { startDescriptionWorker } from "./worker.js";
@@ -110,6 +110,7 @@ async function main(): Promise<void> {
     console.log(
       `Library: ${stats.total} songs · ${stats.countries} countries · ${stats.genres} genres · ${stats.languages} languages`,
     );
+    if (DEMO_MODE) console.log("Catalogue mode: demo (LLM-described songs only)");
     // Pre-generate descriptions in the background so reveals become instant.
     startDescriptionWorker();
   });

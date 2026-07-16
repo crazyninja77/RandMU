@@ -1,6 +1,9 @@
 import { db } from "./db.js";
 import type { Song } from "./types.js";
 
+export const DEMO_MODE = process.env.RANDMU_DEMO_MODE === "1";
+const VISIBLE_SONG_FILTER = DEMO_MODE ? "description_source = 'llm'" : "1 = 1";
+
 interface SongRow {
   id: string;
   title: string;
@@ -109,13 +112,13 @@ export function seedRatingBaselines(): number {
 
 export function getRandomSong(): Song | null {
   const row = db
-    .prepare("SELECT * FROM songs ORDER BY RANDOM() LIMIT 1")
+    .prepare(`SELECT * FROM songs WHERE ${VISIBLE_SONG_FILTER} ORDER BY RANDOM() LIMIT 1`)
     .get() as SongRow | undefined;
   return row ? rowToSong(row) : null;
 }
 
 export function getSongById(id: string): Song | null {
-  const row = db.prepare("SELECT * FROM songs WHERE id = ?").get(id) as
+  const row = db.prepare(`SELECT * FROM songs WHERE id = ? AND ${VISIBLE_SONG_FILTER}`).get(id) as
     | SongRow
     | undefined;
   return row ? rowToSong(row) : null;
@@ -123,6 +126,7 @@ export function getSongById(id: string): Song | null {
 
 /** One song still on templated text, for the background pre-generation worker. */
 export function getNextTemplateSong(): Song | null {
+  if (DEMO_MODE) return null;
   const row = db
     .prepare("SELECT * FROM songs WHERE description_source = 'template' ORDER BY RANDOM() LIMIT 1")
     .get() as SongRow | undefined;
@@ -140,27 +144,48 @@ export function countBySource(): Record<string, number> {
 export function getCountryStats(): { country: string; count: number }[] {
   return db
     .prepare(
-      "SELECT country, COUNT(*) AS count FROM songs WHERE country != '' GROUP BY country ORDER BY count DESC",
+      `SELECT country, COUNT(*) AS count FROM songs
+       WHERE country != '' AND ${VISIBLE_SONG_FILTER}
+       GROUP BY country ORDER BY count DESC`,
     )
     .all() as { country: string; count: number }[];
 }
 
 export function getStats() {
-  const total = (db.prepare("SELECT COUNT(*) AS c FROM songs").get() as { c: number }).c;
-  const countries = (
-    db.prepare("SELECT COUNT(DISTINCT country) AS c FROM songs WHERE country != ''").get() as {
+  const total = (
+    db.prepare(`SELECT COUNT(*) AS c FROM songs WHERE ${VISIBLE_SONG_FILTER}`).get() as {
       c: number;
     }
+  ).c;
+  const countries = (
+    db
+      .prepare(
+        `SELECT COUNT(DISTINCT country) AS c FROM songs
+         WHERE country != '' AND ${VISIBLE_SONG_FILTER}`,
+      )
+      .get() as {
+        c: number;
+      }
   ).c;
   const genres = (
-    db.prepare("SELECT COUNT(DISTINCT genre) AS c FROM songs WHERE genre != ''").get() as {
-      c: number;
-    }
+    db
+      .prepare(
+        `SELECT COUNT(DISTINCT genre) AS c FROM songs
+         WHERE genre != '' AND ${VISIBLE_SONG_FILTER}`,
+      )
+      .get() as {
+        c: number;
+      }
   ).c;
   const languages = (
-    db.prepare("SELECT COUNT(DISTINCT language) AS c FROM songs WHERE language != ''").get() as {
-      c: number;
-    }
+    db
+      .prepare(
+        `SELECT COUNT(DISTINCT language) AS c FROM songs
+         WHERE language != '' AND ${VISIBLE_SONG_FILTER}`,
+      )
+      .get() as {
+        c: number;
+      }
   ).c;
   return { total, countries, genres, languages };
 }
