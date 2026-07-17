@@ -19,7 +19,16 @@ export interface DescribeInput {
   albumName: string | null;
   albumType: string | null;
   year: number | null;
+  /** Human-readable acoustic profile from Spotify audio features, if available. */
+  acousticProfile?: string | null;
+  /** Language to write the prose in (JSON keys stay English). Defaults to English. */
+  lang?: string;
 }
+
+const LANGUAGE_NAMES: Record<string, string> = {
+  en: "English",
+  nl: "Dutch",
+};
 
 export interface GeneratedDescriptions {
   songDescription: string;
@@ -33,6 +42,8 @@ export interface GeneratedDescriptions {
 export interface Grounding {
   text: string;
   years: number[];
+  /** Proper-noun facts (collaborators, labels, awards) known to be true. */
+  entities?: string[];
 }
 
 type Provider = "openai" | "openrouter" | "anthropic";
@@ -92,12 +103,14 @@ export function llmStatus(): { available: boolean; provider: Provider | null; mo
 }
 
 // Default free OpenRouter models, tried in order. Free models are individually
-// rate-limited upstream, so we fall through to the next one on a 429.
+// rate-limited upstream, so we fall through to the next one on a 429. All of
+// these support structured outputs (json_schema) so the JSON is reliable.
 const OPENROUTER_FREE_MODELS = [
-  "openai/gpt-oss-120b:free",
-  "nvidia/nemotron-3-super-120b-a12b:free",
+  "google/gemma-4-26b-a4b-it:free",
+  "tencent/hy3:free",
   "qwen/qwen3-next-80b-a3b-instruct:free",
-  "meta-llama/llama-3.3-70b-instruct:free",
+  "openai/gpt-oss-20b:free",
+  "nvidia/nemotron-3-super-120b-a12b:free",
 ];
 
 function modelsFor(provider: Provider): string[] {
@@ -106,7 +119,9 @@ function modelsFor(provider: Provider): string[] {
   }
   if (provider === "anthropic") return ["claude-3-5-sonnet-latest"];
   if (provider === "openrouter") return OPENROUTER_FREE_MODELS;
-  return ["gpt-4o"];
+  // gpt-4.1 has stronger world-music recall; keep gpt-4o as a fallback. Both
+  // support strict structured outputs (json_schema).
+  return ["gpt-4.1", "gpt-4o-2024-08-06"];
 }
 
 function modelFor(provider: Provider): string {
@@ -144,19 +159,37 @@ function userPrompt(i: DescribeInput, grounding?: Grounding | null): string {
   const facts = grounding?.text
     ? [
         "",
-        "Verified facts (researched from Wikipedia/MusicBrainz). Use ONLY these for any",
-        "specific claim (dates, origin, career stage, collaborators). Do NOT contradict",
-        "them and do NOT introduce other specific facts beyond them or the metadata:",
+        "Verified facts (researched from Wikipedia/MusicBrainz/Wikidata). Use ONLY these for any",
+        "specific claim (dates, origin, career stage, collaborators, labels, awards). Do NOT",
+        "contradict them and do NOT introduce other specific facts beyond them or the metadata:",
         grounding.text,
       ]
     : [];
+  const acoustic = i.acousticProfile
+    ? [
+        "",
+        "Acoustic profile (measured from the actual audio — use to describe how it sounds):",
+        i.acousticProfile,
+      ]
+    : [];
+  const langName = LANGUAGE_NAMES[i.lang ?? "en"] ?? "English";
+  const langLine =
+    langName === "English"
+      ? []
+      : [
+          "",
+          `Write ALL prose values in ${langName}. The JSON keys stay in English, but every`,
+          `description must be natural, fluent ${langName}. Keep proper nouns (names, places) as-is.`,
+        ];
   return [
     "Write liner notes for this specific track. Return ONLY a JSON object with keys",
     '"songDescription", "artistDescription", and "albumDescription".',
+    ...langLine,
     "",
     "Track metadata:",
     JSON.stringify(meta, null, 2),
     ...facts,
+    ...acoustic,
     "",
     "Requirements:",
     "- songDescription (2 short paragraphs, ~70-120 words total): what the track sounds like",
@@ -181,6 +214,32 @@ function userPrompt(i: DescribeInput, grounding?: Grounding | null): string {
   ].join("\n");
 }
 
+// Strict JSON schema for providers that support structured outputs. This makes
+// the model return exactly the shape we need (no brace-scraping, no truncated
+// or malformed objects) — the JSON is guaranteed parseable.
+const DESCRIPTION_SCHEMA = {
+  name: "liner_notes",
+  strict: true,
+  schema: {
+    type: "object",
+    additionalProperties: false,
+    required: ["songDescription", "artistDescription", "albumDescription"],
+    properties: {
+      songDescription: { type: "string" },
+      artistDescription: { type: "string" },
+      albumDescription: { type: ["string", "null"] },
+    },
+  },
+} as const;
+
+function responseFormatFor(provider: "openai" | "openrouter"): Record<string, unknown> {
+  // Both OpenAI and our default OpenRouter models support strict json_schema.
+  // If a model doesn't honour it the call fails and we fall through to the next
+  // model (and ultimately extractJson / the local fallback), so this is safe.
+  if (process.env.LLM_JSON_SCHEMA === "off") return { type: "json_object" };
+  return { type: "json_schema", json_schema: DESCRIPTION_SCHEMA };
+}
+
 function extractJson(text: string): GeneratedDescriptions | null {
   const start = text.indexOf("{");
   const end = text.lastIndexOf("}");
@@ -203,9 +262,12 @@ function extractJson(text: string): GeneratedDescriptions | null {
   return { songDescription: song, artistDescription: artist, albumDescription: album };
 }
 
-// OpenAI and OpenRouter share the same chat-completions request shape.
-async function callOpenAICompatible(
+// OpenAI and OpenRouter share the same chat-completions request shape. A single
+// model call — the caller loops over models, giving each its own timeout so a
+// slow/hung model can't starve the others.
+async function callOpenAICompatibleModel(
   provider: "openai" | "openrouter",
+  model: string,
   input: DescribeInput,
   grounding: Grounding | null,
   signal: AbortSignal,
@@ -222,33 +284,29 @@ async function callOpenAICompatible(
     headers["HTTP-Referer"] = "https://github.com/crazyninja77/RandMU";
     headers["X-Title"] = "RandMU";
   }
-  // Try each configured model in turn; free models are often rate-limited (429)
-  // individually, so falling through keeps generation reliable.
-  for (const model of modelsFor(provider)) {
-    const res = await fetch(url, {
-      method: "POST",
-      signal,
-      headers,
-      body: JSON.stringify({
-        model,
-        temperature: 0.7,
-        max_tokens: MAX_TOKENS,
-        response_format: { type: "json_object" },
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: userPrompt(input, grounding) },
-        ],
-      }),
-    });
-    if (!res.ok) {
-      console.warn(`[llm] ${provider}/${model} ${res.status}: ${(await res.text()).slice(0, 160)}`);
-      continue;
-    }
-    const data = (await res.json()) as { choices?: { message?: { content?: string } }[] };
-    const parsed = extractJson(data.choices?.[0]?.message?.content ?? "");
-    if (parsed) return { ...parsed, model: `${provider}/${model}` };
-    console.warn(`[llm] ${provider}/${model}: response was not valid JSON, trying next`);
+  const res = await fetch(url, {
+    method: "POST",
+    signal,
+    headers,
+    body: JSON.stringify({
+      model,
+      temperature: 0.7,
+      max_tokens: MAX_TOKENS,
+      response_format: responseFormatFor(provider),
+      messages: [
+        { role: "system", content: SYSTEM_PROMPT },
+        { role: "user", content: userPrompt(input, grounding) },
+      ],
+    }),
+  });
+  if (!res.ok) {
+    console.warn(`[llm] ${provider}/${model} ${res.status}: ${(await res.text()).slice(0, 160)}`);
+    return null;
   }
+  const data = (await res.json()) as { choices?: { message?: { content?: string } }[] };
+  const parsed = extractJson(data.choices?.[0]?.message?.content ?? "");
+  if (parsed) return { ...parsed, model: `${provider}/${model}` };
+  console.warn(`[llm] ${provider}/${model}: response was not valid JSON, trying next`);
   return null;
 }
 
@@ -343,6 +401,42 @@ function stripUnsupportedYears(text: string, allowed: Set<number>): string {
   return kept.join(" ").trim();
 }
 
+// Claim types that models love to fabricate. Each sentence asserting one of
+// these is dropped unless the researched grounding actually backs that kind of
+// claim (e.g. the model says "won a Grammy" but no award appears in the facts).
+const CLAIM_TESTS: { re: RegExp; supported: (facts: string) => boolean }[] = [
+  {
+    re: /\bgrammy\b/i,
+    supported: (f) => /\bgrammy\b/.test(f),
+  },
+  {
+    re: /\b(award|awarded|prize|laureate|hall of fame|inducted)\b|\bwon (a|an|the|multiple|several|numerous)\b/i,
+    supported: (f) =>
+      /\b(award|prize|laureate|hall of fame|inducted|medal|honou?r|knight|order of|grammy|winner|won)\b/.test(
+        f,
+      ),
+  },
+  {
+    re: /\b(certified|platinum|gold record|gold disc|diamond)\b/i,
+    supported: (f) => /\b(certif|platinum|gold|diamond)\b/.test(f),
+  },
+  {
+    re: /\b(number[- ]one|no\.?\s?1|#\s?1|topped the charts?|chart-topping|top of the charts?|billboard|peaked at)\b/i,
+    supported: (f) =>
+      /\b(chart|billboard|number[- ]one|no\.?\s?1|#\s?1|peaked|top \d)\b/.test(f),
+  },
+];
+
+/** Drop sentences making award / chart / certification claims not backed by facts. */
+function stripUnsupportedClaims(text: string, groundingText: string): string {
+  const facts = groundingText.toLowerCase();
+  const sentences = text.split(/(?<=[.!?])\s+/);
+  const kept = sentences.filter((s) =>
+    CLAIM_TESTS.every((t) => !t.re.test(s) || t.supported(facts)),
+  );
+  return kept.join(" ").trim();
+}
+
 function wordCount(s: string): number {
   return s.trim().split(/\s+/).filter(Boolean).length;
 }
@@ -354,14 +448,14 @@ function verify(
 ): GeneratedDescriptions | null {
   const allowed = new Set<number>(grounding?.years ?? []);
   if (input.year) allowed.add(input.year);
-  const songDescription = stripUnsupportedYears(gen.songDescription, allowed);
-  const artistDescription = stripUnsupportedYears(gen.artistDescription, allowed);
+  const factText = grounding?.text ?? "";
+  const clean = (t: string) => stripUnsupportedClaims(stripUnsupportedYears(t, allowed), factText);
+  const songDescription = clean(gen.songDescription);
+  const artistDescription = clean(gen.artistDescription);
   // If stripping gutted the prose, treat as a failed generation (caller falls
   // back to template; the background worker will retry later).
   if (wordCount(songDescription) < 30 || wordCount(artistDescription) < 25) return null;
-  const albumDescription = gen.albumDescription
-    ? stripUnsupportedYears(gen.albumDescription, allowed) || null
-    : null;
+  const albumDescription = gen.albumDescription ? clean(gen.albumDescription) || null : null;
   return { songDescription, artistDescription, albumDescription, model: gen.model };
 }
 
@@ -407,12 +501,20 @@ export async function generateDescriptions(
     }
   }
 
-  const remote = (): Promise<GeneratedDescriptions | null> => {
+  const remote = async (): Promise<GeneratedDescriptions | null> => {
     if (provider === "anthropic")
       return withTimeout(TIMEOUT_MS, (s) => callAnthropic(input, facts, s));
-    if (provider)
-      return withTimeout(TIMEOUT_MS, (s) => callOpenAICompatible(provider, input, facts, s));
-    return Promise.resolve(null);
+    if (provider === "openai" || provider === "openrouter") {
+      // Each model gets its own timeout so one slow/hung free model can't
+      // consume the whole budget and starve the rest of the fallback chain.
+      for (const model of modelsFor(provider)) {
+        const r = await withTimeout(TIMEOUT_MS, (s) =>
+          callOpenAICompatibleModel(provider, model, input, facts, s),
+        );
+        if (r) return r;
+      }
+    }
+    return null;
   };
   const local = (): Promise<GeneratedDescriptions | null> =>
     ollamaReady ? withTimeout(OLLAMA_TIMEOUT_MS, (s) => callOllama(input, facts, s)) : Promise.resolve(null);

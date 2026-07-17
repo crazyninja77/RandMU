@@ -34,8 +34,10 @@ export const api = {
     }),
   failPayment: (id: string) =>
     req<{ payment: Payment }>(`/api/payments/${id}/fail`, { method: "POST" }),
-  recommendation: (paymentId: string) =>
-    req<{ song: Song }>(`/api/recommendation/${paymentId}`),
+  recommendation: (paymentId: string, lang?: string) =>
+    req<{ song: Song }>(
+      `/api/recommendation/${paymentId}${lang && lang !== "en" ? `?lang=${lang}` : ""}`,
+    ),
   rateSong: (id: string, value: number) =>
     req<{ average: number; count: number }>(`/api/songs/${id}/rate`, {
       method: "POST",

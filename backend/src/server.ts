@@ -3,7 +3,7 @@ import cors from "cors";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { getStats, getCountryStats, rateSong, getSongById } from "./library.js";
+import { DEMO_MODE, getStats, getCountryStats, rateSong, getSongById } from "./library.js";
 import { ensureSongDescribed } from "./descriptions.js";
 import { initLlm, llmStatus } from "./llm.js";
 import { startDescriptionWorker } from "./worker.js";
@@ -78,8 +78,10 @@ app.post("/api/songs/:id/rate", (req, res) => {
 app.get("/api/recommendation/:paymentId", async (req, res) => {
   const song = getPaymentSong(req.params.paymentId);
   if (!song) return res.status(402).json({ error: "payment_required" });
-  // Generate + cache unique liner notes for this song on first reveal.
-  const described = await ensureSongDescribed(song);
+  // Generate + cache unique liner notes for this song on first reveal, in the
+  // requested UI language (defaults to English).
+  const lang = req.query.lang === "nl" ? "nl" : "en";
+  const described = await ensureSongDescribed(song, lang);
   res.json({ song: described });
 });
 
@@ -110,6 +112,7 @@ async function main(): Promise<void> {
     console.log(
       `Library: ${stats.total} songs · ${stats.countries} countries · ${stats.genres} genres · ${stats.languages} languages`,
     );
+    if (DEMO_MODE) console.log("Catalogue mode: demo (LLM-described songs only)");
     // Pre-generate descriptions in the background so reveals become instant.
     startDescriptionWorker();
   });

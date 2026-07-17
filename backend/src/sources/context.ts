@@ -190,6 +190,54 @@ export const GENRE_CONTEXT: Record<string, string> = {
   "island reggae": "the laid-back Pacific take on reggae",
   "world fusion": "music that consciously blends traditions from across the globe",
   "global bass": "club music built from the bass-heavy dance styles of the Global South",
+
+  // --- Additional African ---
+  zamrock: "the fuzzed-out, psychedelic garage rock that erupted in 1970s Zambia",
+  "palm-wine": "the gently lilting West African guitar music once played in palm-wine bars",
+  "palm wine": "the gently lilting West African guitar music once played in palm-wine bars",
+  kwela: "the pennywhistle-driven street jive of 1950s South African townships",
+  mbube: "the booming Zulu male-choral style that gave the world 'The Lion Sleeps Tonight'",
+  marrabenta: "Mozambique's buoyant urban dance music built on locally-made guitars",
+  wassoulou: "the earthy, women-led hunters' music of southern Mali",
+  "coupé-décalé": "the flashy, percussive party music of the Ivorian diaspora",
+  zouglou: "the student-born Ivorian dance music full of social commentary",
+  genge: "Kenya's raw, Sheng-language hip-hop and street pop",
+  gengetone: "the rowdy new-generation Kenyan street rap descended from genge",
+  shaabi: "the raucous working-class street pop of Egyptian weddings and streets",
+  mahraganat: "Egypt's electro-shaabi, an autotuned, hard-hitting sound from Cairo's streets",
+
+  // --- Additional Latin America / Caribbean ---
+  sertanejo: "Brazil's hugely popular country music of the rural interior",
+  pagode: "a relaxed, backyard-party offshoot of samba",
+  choro: "Brazil's virtuosic, fast-fingered instrumental precursor to samba",
+  frevo: "the frenetic brass-and-whistle carnival music of Recife",
+  maracatu: "the thunderous Afro-Brazilian processional drumming of Pernambuco",
+  baião: "the accordion-led backlands dance rhythm of Brazil's northeast",
+  timba: "the aggressive, funk-injected modern evolution of Cuban dance music",
+  plena: "the topical, hand-drum 'sung newspaper' of Puerto Rico",
+  bomba: "the call-and-response drum-and-dance tradition of Afro-Puerto Ricans",
+  joropo: "the harp-and-cuatro cowboy music of the Venezuelan and Colombian plains",
+  candombe: "the Afro-Uruguayan drum tradition of Montevideo's carnival",
+  milonga: "a quick, rustic cousin of tango from the Río de la Plata",
+  zamba: "a slow, handkerchief-waving Argentine folk dance",
+  festejo: "the exuberant Afro-Peruvian celebration rhythm of the coast",
+
+  // --- Additional Europe / Mediterranean ---
+  entekhno: "the art-song strand of Greek popular music, wedding poetry to orchestration",
+  rebetika: "the 'Greek blues' of the early-20th-century urban underworld",
+  mugham: "Azerbaijan's improvised modal art music, kin to the Persian dastgah",
+  fasil: "the classical Turkish suite tradition performed in meyhane taverns",
+  "turkish classical": "the makam-based art music of the Ottoman court and city",
+
+  // --- Additional Asia ---
+  thumri: "a romantic, ornamented semi-classical vocal form of North India",
+  bhajan: "Hindu devotional song, simple and heartfelt",
+  kirtan: "call-and-response devotional chanting of the Indian subcontinent",
+  luk_thung: "Thailand's heart-tugging country music of rural longing",
+  "luk thung": "Thailand's heart-tugging country music of rural longing",
+  "throat-singing": "the astonishing overtone singing of Mongolia and Tuva",
+  khoomei: "the Tuvan and Mongolian art of overtone throat-singing",
+  nasheed: "Islamic vocal music, often sung a cappella or with percussion only",
 };
 
 /** Genre name aliases so lookups still hit. */
